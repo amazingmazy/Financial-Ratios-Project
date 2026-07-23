@@ -7,13 +7,34 @@ ipython
 jupyter
 jupytext
 matplotlib
-numpy
-pandas
 polars>=1.9.0
-pytest==8.3.3
 python-dateutil
 python-decouple>=3.8
-requests>=2.32.3
 scipy>=1.12.0
+
+# Testing
+pytest==8.3.3
+
+# Linting / Formatting
+pylint
+flake8
+black
+
+# Core API framework
+fastapi==0.123.10
+uvicorn==0.40.0
+python-multipart==0.0.22
+pydantic==2.12.3
+pydantic-settings==2.12.0
+
+# ML/Data libraries
+numpy
+pandas
+scikit-learn==1.6.1
+joblib==1.5.3
+
 seaborn>=0.13.2
 wrds>=3.2.0
+
+# Utilities
+requests>=2.32.3
