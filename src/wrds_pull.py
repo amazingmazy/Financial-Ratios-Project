@@ -25,7 +25,13 @@ tested, and unit-tested without ever touching WRDS.
 """
 
 from __future__ import annotations
+import numpy as np
 import pandas as pd
+
+# Bump this whenever wrds_pull.py changes, and check it's printed at the top
+# of your run's console output -- if it's missing or shows an old value,
+# you're running a stale copy of this file, not the one you think you are.
+WRDS_PULL_VERSION = "2024-issue1-v6-discontinuity-guard"
 
 
 class WRDSNotAvailable(RuntimeError):
@@ -163,6 +169,101 @@ def pull_crsp_riskfree(conn, start: str = "1926-01-01", end: str | None = None) 
 # Compustat: aggregate NYSE book equity and operating earnings, via CCM link
 # --------------------------------------------------------------------------
 
+def aggregate_firm_level_to_fiscal_year(firm_level: pd.DataFrame,
+                                         units_millions_to_thousands: int = 1000,
+                                         min_firms_per_year: int = 100,
+                                         max_ratio_to_next_years: float = 0.35,
+                                         discontinuity_lookahead: int = 3) -> pd.DataFrame:
+    """
+    Pure aggregation step, factored out of pull_compustat_be_and_earnings so it
+    can be unit-tested without a live WRDS connection.
+
+    `firm_level` must have columns gvkey, fyear, book_equity, oibdp (one row
+    per firm-year, already NYSE-filtered and history-filtered). Groups by
+    `fyear` (not exact datadate -- see module-level note on why), sums book
+    equity and OIBDP across firms, converts from Compustat's $ millions to
+    CRSP totval's $ thousands, and indexes the result by December 31 of each
+    fiscal year.
+
+    Two independent guards against unrepresentative early-coverage years,
+    checked per-field (book equity and OIBDP separately -- see below):
+
+    1. `min_firms_per_year` (default 100, was 30): any fiscal year built from
+       fewer than this many firms with non-missing data for that field is set
+       to NaN. Raised from the original default after a live run showed 30
+       was too permissive -- mature years in this dataset average ~1,900
+       NYSE firms, so 30 let through years that were still deep in Compustat's
+       coverage ramp-up (see next point).
+
+    2. `max_ratio_to_next_years` / `discontinuity_lookahead`: a year is ALSO
+       set to NaN if its aggregate is less than `max_ratio_to_next_years`
+       (default 0.35) times the average of the next `discontinuity_lookahead`
+       years' aggregates. This catches exactly the failure mode a fixed firm
+       count can miss: a live run found fiscal year 1961 had enough firms to
+       clear a 30-firm threshold, but its aggregate book equity ($11.8M) was
+       still only ~1/9th of 1962's ($123M) -- a coverage discontinuity, not
+       real one-year growth, that a raw firm count alone doesn't distinguish
+       from a genuinely small but representative year. A fixed threshold
+       can't be tuned to catch this in general, since "how many firms is
+       enough" itself changes across a sample spanning decades of Compustat's
+       own historical coverage growth; comparing each year to its near-term
+       neighbors adapts automatically.
+
+    Both guards are applied independently to book_equity_sum and oibdp_sum
+    (n_firms_be for the former, n_firms_oibdp for the latter) -- a live run
+    showed one field can be well-covered in a year where the other isn't
+    (e.g. 1953 had healthy OIBDP but zero non-missing book equity), so a
+    single combined check would silently let a bad field's aggregate through
+    riding on the other field's coverage.
+
+    Set either guard's threshold to 0 / None to disable it.
+    """
+    agg = (firm_level
+           .groupby("fyear")
+           .agg(book_equity_sum=("book_equity", "sum"),
+                oibdp_sum=("oibdp", "sum"),
+                n_firms=("gvkey", "nunique"),
+                n_firms_be=("book_equity", lambda s: s.notna().sum()),
+                n_firms_oibdp=("oibdp", lambda s: s.notna().sum()))
+           .sort_index())
+    agg["book_equity_sum"] *= units_millions_to_thousands
+    agg["oibdp_sum"] *= units_millions_to_thousands
+
+    def apply_guards(sum_col, count_col, label):
+        thin = agg[count_col] < min_firms_per_year
+        if thin.any():
+            print(f"  [debug] {thin.sum()} fiscal year(s) below the "
+                  f"{min_firms_per_year}-firm minimum for {label}, set to NaN: "
+                  f"{agg.index[thin].tolist()} ({count_col}: {agg.loc[thin, count_col].tolist()})")
+            agg.loc[thin, sum_col] = np.nan
+
+        if max_ratio_to_next_years:
+            # Compare each year to the mean of the next N years, using
+            # values BEFORE this function's own NaN-ing above so a bad year
+            # doesn't get compared against neighbors already blanked out.
+            raw = agg[sum_col].where(~thin)  # exclude already-thin years from the reference too
+            forward_mean = pd.Series(
+                [raw.iloc[i + 1:i + 1 + discontinuity_lookahead].mean() for i in range(len(raw))],
+                index=raw.index,
+            )
+            ratio = agg[sum_col] / forward_mean
+            discontinuous = (ratio < max_ratio_to_next_years) & forward_mean.notna() & ~thin
+            if discontinuous.any():
+                print(f"  [debug] {discontinuous.sum()} fiscal year(s) for {label} look like a "
+                      f"coverage ramp-up (< {max_ratio_to_next_years:.0%} of the next "
+                      f"{discontinuity_lookahead} years' average), set to NaN: "
+                      f"{agg.index[discontinuous].tolist()} "
+                      f"(ratio to forward average: {ratio[discontinuous].round(3).tolist()})")
+                agg.loc[discontinuous, sum_col] = np.nan
+
+    apply_guards("book_equity_sum", "n_firms_be", "BOOK EQUITY")
+    apply_guards("oibdp_sum", "n_firms_oibdp", "OIBDP")
+
+    agg.index = pd.to_datetime(agg.index.astype(int).astype(str) + "-12-31")
+    agg.index.name = "datadate"
+    return agg
+
+
 def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
                                     end: str | None = None,
                                     min_years_history: int = 3) -> pd.DataFrame:
@@ -171,27 +272,50 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
     following the paper's construction (Section 3): book equity =
     CEQ + TXDITC - preferred stock; operating earnings = OIBDP; both summed across
     NYSE-listed firms (via the CRSP-Compustat merged linktable) with at least
-    `min_years_history` years of Compustat history, as of each fiscal year-end.
+    `min_years_history` years of Compustat history.
 
-    Book equity per Fama-French (1993): CEQ + TXDITC - preferred stock, where
-    preferred stock is PSTKRV (redemption value), falling back to PSTKL
-    (liquidating value), falling back to PSTK (par value), in that order --
-    this fallback chain is the standard convention in the empirical literature.
+    NULL HANDLING: TXDITC (deferred taxes/investment credit) is coalesced to
+    0 if missing -- standard Fama-French convention, since a missing value
+    here usually means "not applicable" rather than "unknown." CEQ (common
+    equity) is deliberately NOT coalesced -- if it's genuinely missing, the
+    firm's book equity is unknown, not zero, and it should drop out of that
+    year's sum rather than be misrepresented. See aggregate_firm_level_to_fiscal_year
+    for how a fiscal year with too few non-missing CEQ values is handled.
 
-    Returns a DataFrame indexed by fiscal-year-end date with columns:
+    UNITS: Compustat dollar fields (ceq, txditc, pstk*, oibdp) are reported in
+    $ millions; CRSP's crsp.msi.totval (used as the market-equity denominator
+    downstream in construct_panel.py) is in $ thousands. The aggregation step
+    (aggregate_firm_level_to_fiscal_year) multiplies book equity and OIBDP by
+    1000 before returning, so both sides of the B/M and E/P ratios are in the
+    same ($ thousands) units. If you change the totval source, revisit this.
+
+    AGGREGATION GRANULARITY: firms are grouped by Compustat's `fyear` (the
+    fiscal-year label), not by the exact `datadate` -- different firms have
+    different fiscal year-end dates (Dec 31, June 30, etc.), so grouping by
+    the literal date fragments what should be one "NYSE aggregate for fiscal
+    year Y" into dozens of near-empty single-firm groups. Each fiscal year's
+    aggregate is indexed by December 31 of that year, used as the assumed
+    fiscal-year-end for the >=4-month reporting lag in construct_panel.py.
+
+    NYSE MEMBERSHIP: checked as-of each firm's fiscal-year-end date against
+    crsp.msenames' namedt/nameendt validity range, not "was this permno ever
+    NYSE-listed at any point in its history." The latter, looser check would
+    let a firm's book equity/earnings count toward the NYSE aggregate even in
+    years it was actually listed elsewhere (or not yet listed at all),
+    adding spurious composition noise across years -- a plausible contributor
+    if you see B/M or E/P's standard deviation running higher than the
+    paper's despite the mean matching well.
+
+    Returns a DataFrame indexed by (Dec-31-of-fyear) date with columns:
         book_equity_sum, oibdp_sum, n_firms
-    NOTE: this is deliberately at annual/fiscal-year-end granularity. The
-    4-month reporting lag and the monthly panel merge (assigning each fiscal
-    year's aggregate to the correct set of *months*) happen in
-    `construct_panel.py`, not here -- this function's job is just the
-    Compustat-side aggregation.
     """
     _require_conn(conn)
+    print(f"  [wrds_pull.py version: {WRDS_PULL_VERSION}]")
     query = """
         WITH be AS (
             SELECT
                 f.gvkey, f.datadate, f.fyear,
-                f.ceq, f.txditc,
+                f.ceq, COALESCE(f.txditc, 0) AS txditc,
                 COALESCE(f.pstkrv, f.pstkl, f.pstk, 0) AS pstk_any,
                 f.oibdp
             FROM comp.funda f
@@ -212,11 +336,6 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
             SELECT gvkey, lpermno AS permno, linkdt, linkenddt
             FROM crsp.ccmxpf_linktable
             WHERE linktype IN ('LU','LC') AND linkprim IN ('P','C')
-        ),
-        nyse_names AS (
-            SELECT DISTINCT permno
-            FROM crsp.msenames
-            WHERE exchcd = 1
         )
         SELECT be.gvkey, be.datadate, be.fyear,
                (be.ceq + be.txditc - be.pstk_any) AS book_equity,
@@ -224,8 +343,10 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
         FROM be
         JOIN first_year fy ON be.gvkey = fy.gvkey
         JOIN link l ON be.gvkey = l.gvkey
-            AND be.datadate BETWEEN l.linkdt AND COALESCE(l.linkenddt, CURRENT_DATE)
-        JOIN nyse_names n ON l.permno = n.permno
+            AND be.datadate::date BETWEEN l.linkdt::date AND COALESCE(l.linkenddt::date, CURRENT_DATE)
+        JOIN crsp.msenames n ON l.permno = n.permno
+            AND n.exchcd = 1
+            AND be.datadate::date BETWEEN n.namedt::date AND n.nameendt::date
         WHERE (be.fyear - fy.first_fyear) >= %(min_years)s
     """.format(end_clause="AND f.datadate <= %(end)s" if end else "")
     params = {"start": start, "min_years": min_years_history}
@@ -234,10 +355,10 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
     firm_level = conn.raw_sql(query, params=params, date_cols=["datadate"])
     firm_level["datadate"] = pd.to_datetime(firm_level["datadate"])
 
-    agg = (firm_level
-           .groupby("datadate")
-           .agg(book_equity_sum=("book_equity", "sum"),
-                oibdp_sum=("oibdp", "sum"),
-                n_firms=("gvkey", "nunique"))
-           .sort_index())
-    return agg
+    print(f"  [debug] {len(firm_level)} firm-year rows after all joins, "
+          f"{firm_level['gvkey'].nunique()} unique firms, "
+          f"{firm_level['fyear'].nunique()} unique fiscal years "
+          f"({firm_level.groupby('fyear')['gvkey'].nunique().mean():.0f} firms/year on average -- "
+          f"this should be in the hundreds for NYSE, not close to 1)")
+
+    return aggregate_firm_level_to_fiscal_year(firm_level)

@@ -127,6 +127,11 @@ def construct_bm_and_ep(panel: pd.DataFrame, compustat_annual: pd.DataFrame,
     flag columns are set accordingly. This flag must never be silently
     dropped downstream -- Issue 1 explicitly requires flagging any
     approximation as such, not presenting it as a true aggregate NYSE ratio.
+
+    Also attaches diagnostic-only columns (matched_fye, book_equity_sum_used,
+    oibdp_sum_used) so an outlier B/M or E/P month can be traced back to
+    exactly which fiscal year's data produced it, without re-deriving
+    anything -- see diagnose_bm.py.
     """
     df = panel.copy()
     matched_fye = assign_lagged_fiscal_year(df.index, compustat_annual.index)
@@ -141,6 +146,12 @@ def construct_bm_and_ep(panel: pd.DataFrame, compustat_annual: pd.DataFrame,
     df["logE/P"] = np.log(df["E/P"])
     df["bm_is_approx"] = is_approximation
     df["ep_is_approx"] = is_approximation
+
+    # Diagnostic-only, not part of MASTER_COLS -- dropped by assemble_master_panel
+    # unless explicitly requested via keep_diagnostics=True.
+    df["matched_fye"] = matched_fye.values
+    df["book_equity_sum_used"] = be.values
+    df["oibdp_sum_used"] = earn.values
     return df
 
 
@@ -150,7 +161,8 @@ def construct_bm_and_ep(panel: pd.DataFrame, compustat_annual: pd.DataFrame,
 
 def assemble_master_panel(crsp_index: pd.DataFrame, rf: pd.DataFrame, cpi: pd.DataFrame,
                            compustat_annual: pd.DataFrame | None = None,
-                           bm_ep_is_approximation: bool = False) -> pd.DataFrame:
+                           bm_ep_is_approximation: bool = False,
+                           keep_diagnostics: bool = False) -> pd.DataFrame:
     """
     Full Issue 1 pipeline: dividend yield -> excess/real returns -> B/M & E/P
     (if compustat_annual is supplied) -> final column selection matching
@@ -169,6 +181,11 @@ def assemble_master_panel(crsp_index: pd.DataFrame, rf: pd.DataFrame, cpi: pd.Da
     bm_ep_is_approximation : set True if `compustat_annual` was itself built
                  from a non-Compustat approximation (e.g. French 25 Size-BM
                  portfolios) rather than real Compustat data.
+    keep_diagnostics : if True, also return totval, matched_fye,
+                 book_equity_sum_used, oibdp_sum_used in the output (not part
+                 of the official MASTER_COLS schema) -- use this to trace an
+                 outlier B/M/E/P month back to its source data. See
+                 diagnose_bm.py for a ready-made analysis of these columns.
     """
     df = construct_dividend_yield(crsp_index)
     df["VWNY"] = _to_percent(df["vwretd"])
@@ -185,6 +202,12 @@ def assemble_master_panel(crsp_index: pd.DataFrame, rf: pd.DataFrame, cpi: pd.Da
         df["logE/P"] = np.nan
         df["bm_is_approx"] = True
         df["ep_is_approx"] = True
+        df["matched_fye"] = pd.NaT
+        df["book_equity_sum_used"] = np.nan
+        df["oibdp_sum_used"] = np.nan
 
     df = df.reset_index().rename(columns={"index": "date"})
+    if keep_diagnostics:
+        diag_cols = ["totval", "matched_fye", "book_equity_sum_used", "oibdp_sum_used"]
+        return df[MASTER_COLS + [c for c in diag_cols if c in df.columns]]
     return df[MASTER_COLS]
