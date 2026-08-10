@@ -53,17 +53,19 @@ def ols_beta_se(y: np.ndarray, X: np.ndarray):
 def fit_ar1(x: np.ndarray):
     """
     Fit x_t = f + rho * x_{t-1} + m_t by OLS.
-    Returns dict with rho_hat, se(rho), residuals m_hat (length T-1),
-    the Kendall/Marriott bias approx -(1+3*rho)/T, and sigma_m.
+    Returns dict with f_hat (intercept), rho_hat, se(rho), residuals m_hat
+    (length T-1), the Kendall/Marriott bias approx -(1+3*rho)/T, and sigma_m.
     """
     x_t = x[1:]
     x_lag = x[:-1]
     T = len(x_t)
     X = np.column_stack([np.ones(T), x_lag])
     beta, se, resid, XtX_inv = ols_beta_se(x_t, X)
+    f_hat = beta[0]
     rho_hat = beta[1]
     kendall_bias = -(1 + 3 * rho_hat) / T
     return {
+        "f_hat": f_hat,
         "rho_hat": rho_hat,
         "se_rho": se[1],
         "resid": resid,       # m_hat_t, length T
@@ -132,6 +134,7 @@ def stambaugh_correction(r: np.ndarray, x: np.ndarray, n_sims: int = 20000,
     ar1 = fit_ar1(x)  # uses x_0..x_T -> T obs of m_t
     pred = fit_predictive_ols(r, x_lag)
 
+    f_hat = ar1["f_hat"]
     rho_hat = ar1["rho_hat"]
     m_hat = ar1["resid"]
     e_hat = pred["resid"]
@@ -141,9 +144,26 @@ def stambaugh_correction(r: np.ndarray, x: np.ndarray, n_sims: int = 20000,
 
     b_obs = pred["b_hat"]
 
-    # Simulate under the null b = 0, with the estimated rho and residual
-    # covariance structure. Draw correlated (e_t, m_t) innovations, build
-    # x recursively from x_0 = x[0], then run the same two regressions.
+    # Simulate under the null b = 0, with the estimated rho, intercept, and
+    # residual covariance structure. Draw correlated (e_t, m_t) innovations,
+    # build x recursively from x_0 = x[0], then run the same two regressions.
+    #
+    # BUG FIX: earlier versions omitted f_hat here, using x_sim[t] =
+    # rho_hat*x_sim[t-1] + m_sim[t-1] with no drift term. For a stationary
+    # AR(1), the intercept doesn't change the process's variance once it
+    # reaches its stationary distribution -- but it does change what level
+    # the process reverts *toward*. Without it, the simulation reverts
+    # toward 0 instead of toward the true historical mean of x. When rho_hat
+    # is close to 1 (slow mean reversion, as it always is for these
+    # predictors) and x_0 starts far from 0 (e.g. logDY around -3, not 0),
+    # the simulated series spends the whole sample decaying from x_0 toward
+    # the wrong target, inflating the empirical variance of x_lag_sim within
+    # the simulated window beyond what the true stationary process would
+    # show. Since the simulated slope's variance is inversely proportional
+    # to var(x_lag_sim), this systematically *deflates* Stambaugh's
+    # simulated standard error -- exactly the symptom found on real data:
+    # Stambaugh's SE coming out smaller than OLS's, backwards from theory
+    # (Stambaugh should reflect *more* uncertainty than OLS, not less).
     cov = np.array([[sigma_e ** 2, corr_em * sigma_e * sigma_m],
                     [corr_em * sigma_e * sigma_m, sigma_m ** 2]])
     sims = np.empty(n_sims)
@@ -154,7 +174,7 @@ def stambaugh_correction(r: np.ndarray, x: np.ndarray, n_sims: int = 20000,
         x_sim = np.empty(T + 1)
         x_sim[0] = x0
         for t in range(1, T + 1):
-            x_sim[t] = rho_hat * x_sim[t - 1] + m_sim[t - 1]
+            x_sim[t] = f_hat + rho_hat * x_sim[t - 1] + m_sim[t - 1]
         x_lag_sim = x_sim[:-1]
         r_sim = x_lag_sim * 0.0 + e_sim  # b = 0 under the null
         Xd = np.column_stack([np.ones(T), x_lag_sim])
