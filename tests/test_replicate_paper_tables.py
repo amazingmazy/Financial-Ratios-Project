@@ -90,5 +90,18 @@ def test_no_year_exclusion_applied_to_bm_window(synthetic_panel):
     assert len(t) <= 1  # 0 or 1 depending on whether logB/M has data that early in synthetic panel
 
 
+def test_table_6_ep_uses_identical_machinery_to_table_5(synthetic_panel):
+    # Table 6 (E/P) is meant to be a straight swap of the predictor column
+    # onto the same run_table() used for Table 5 (B/M) -- confirm it works
+    # end-to-end and returns the same schema, not a special-cased path.
+    t5 = run_table(synthetic_panel, "logB/M", ["VWNY", "EWNY"], "1963-2000",
+                   "1963-06-01", "2000-12-31", n_sims=200)
+    t6 = run_table(synthetic_panel, "logE/P", ["VWNY", "EWNY"], "1963-2000",
+                   "1963-06-01", "2000-12-31", n_sims=200)
+    assert list(t5.columns) == list(t6.columns)
+    if not t6.empty:
+        assert set(t6["predictor"]) == {"logE/P"}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
