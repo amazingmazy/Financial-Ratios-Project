@@ -31,7 +31,7 @@ import pandas as pd
 # Bump this whenever wrds_pull.py changes, and check it's printed at the top
 # of your run's console output -- if it's missing or shows an old value,
 # you're running a stale copy of this file, not the one you think you are.
-WRDS_PULL_VERSION = "2024-issue1-v6-discontinuity-guard"
+WRDS_PULL_VERSION = "2024-issue2-v7-totval-current-month-fix"
 
 
 class WRDSNotAvailable(RuntimeError):
@@ -100,6 +100,7 @@ def pull_crsp_nyse_index_exchcd_filtered(conn, start: str = "1926-01-01",
     faithful reproduction of "NYSE only" for the post-1962 period.
     """
     _require_conn(conn)
+    print(f"  [wrds_pull.py version: {WRDS_PULL_VERSION}]")
     query = """
         SELECT a.permno, a.date, a.ret, a.retx, a.prc, a.shrout,
                b.exchcd
@@ -116,19 +117,48 @@ def pull_crsp_nyse_index_exchcd_filtered(conn, start: str = "1926-01-01",
         params["end"] = end
     sec = conn.raw_sql(query, params=params, date_cols=["date"])
     sec["date"] = pd.to_datetime(sec["date"])
+    return aggregate_security_level_to_monthly_index(sec)
+
+
+def aggregate_security_level_to_monthly_index(sec: pd.DataFrame) -> pd.DataFrame:
+    """
+    Pure aggregation step, factored out of pull_crsp_nyse_index_exchcd_filtered
+    so it can be unit-tested without a live WRDS connection.
+
+    `sec` must have columns permno, date, ret, retx, prc, shrout (one row per
+    security-month). Value-weights returns by LAGGED market cap (standard
+    practice -- weighting by this month's realized value would create a
+    mechanical look-ahead correlation between weights and the return being
+    weighted), but reports `totval` using CURRENT-month market cap.
+
+    This distinction matters concretely: `totval` is later used by
+    construct_dividend_yield as DY_t's denominator, matching the paper's own
+    definition of "dividends divided by the CURRENT level of the index." An
+    earlier version of this function reused the lagged weights for `totval`
+    too, which silently lagged the entire dividend-yield series by one
+    month -- severing the contemporaneous link between a month's return and
+    that same month's DY. Verified on a live run: this collapsed corr(e,m)
+    from an expected ~-0.9 (mechanically, price up -> DY down, same month)
+    to ~-0.03 to -0.15, which in turn muted both the Stambaugh correction's
+    bias adjustment and the rho~1 test's standard-error reduction -- neither
+    of which is a bug in the estimators themselves (verified separately by
+    running the same estimator code on controlled synthetic data, where it
+    correctly recovers corr(e,m) ~ -0.996).
+    """
+    sec = sec.copy()
     sec["mktcap"] = sec["prc"].abs() * sec["shrout"]
     sec = sec.dropna(subset=["ret", "mktcap"])
     sec["mktcap_lag"] = sec.groupby("permno")["mktcap"].shift(1)
     sec = sec.dropna(subset=["mktcap_lag"])
 
     def _agg(g):
-        w = g["mktcap_lag"]
+        w = g["mktcap_lag"]  # weighting scheme for returns only
         return pd.Series({
             "vwretd": (g["ret"] * w).sum() / w.sum(),
             "vwretx": (g["retx"] * w).sum() / w.sum(),
             "ewretd": g["ret"].mean(),
             "ewretx": g["retx"].mean(),
-            "totval": w.sum(),
+            "totval": g["mktcap"].sum(),  # CURRENT-month cap, not lagged
             "totcnt": g["permno"].nunique(),
         })
 
