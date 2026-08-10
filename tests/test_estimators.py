@@ -158,5 +158,20 @@ def test_run_all_end_to_end_ordering_matches_theory():
     )
 
 
+def test_run_all_exposes_corr_em_and_gamma_hat():
+    """
+    corr(e,m) and gamma_hat drive both the Stambaugh correction's magnitude
+    and the rho~1 test's SE reduction -- exposing them lets a real-data run
+    be diagnosed directly (e.g. "is the effect muted because corr(e,m) is
+    weak here, or is something else wrong?") instead of inferred indirectly
+    from how strong the downstream effects look.
+    """
+    r, x = _simulate_ar1_predictive_pair(rho_true=0.997, corr=-0.9)
+    res = run_all(r, x, n_sims=2000)
+    assert "corr_em" in res and "gamma_hat" in res
+    # Should recover something close to the true simulated correlation.
+    assert res["corr_em"] < -0.7
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

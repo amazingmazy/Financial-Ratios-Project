@@ -74,6 +74,7 @@ def run_table(df: pd.DataFrame, ratio_col: str, return_cols: list[str],
         rows.append({
             "window": window_label, "predictor": ratio_col, "series": col, "T": res["T"],
             "rho_hat": res["rho_hat"], "kendall_bias": res["kendall_bias"],
+            "corr_em": res["corr_em"], "gamma_hat": res["gamma_hat"],
             "OLS_b": res["ols_b"], "OLS_se": res["ols_se"], "OLS_p": res["ols_p"],
             "Stambaugh_b": res["stambaugh_b"], "Stambaugh_se": res["stambaugh_se"], "Stambaugh_p": res["stambaugh_p"],
             "rho1_b": res["rho1_b"], "rho1_se": res["rho1_se"], "rho1_t": res["rho1_t"], "rho1_p": res["rho1_p"],
@@ -98,6 +99,7 @@ def print_paper_style(table: pd.DataFrame, title: str):
     print(f"{'':12s}" + "".join(f"{s:>18s}" for s in series_list))
     print(f"{'T':12s}" + "".join(f"{int(table.loc[table.series==s,'T'].iloc[0]):>18d}" for s in series_list))
     print(f"{'AR(1) rho':12s}" + "".join(f"{table.loc[table.series==s,'rho_hat'].iloc[0]:>18.4f}" for s in series_list))
+    print(f"{'corr(e,m)':12s}" + "".join(f"{table.loc[table.series==s,'corr_em'].iloc[0]:>18.4f}" for s in series_list))
     print("-" * (12 + 18 * len(series_list)))
     for est, bcol, secol, pcol in [("OLS", "OLS_b", "OLS_se", "OLS_p"),
                                     ("Stambaugh", "Stambaugh_b", "Stambaugh_se", "Stambaugh_p"),

@@ -292,11 +292,26 @@ def run_all(r: np.ndarray, x: np.ndarray, n_sims: int = 20000, rho_assumed: floa
     D = unit_root_pvalue(x, n_sims=n_sims)
     joint_p = modified_bonferroni(cond.p, stam.p, D)
 
+    # corr(e, m): the correlation between return shocks and predictor-innovation
+    # shocks. This single number is the engine behind both the Stambaugh bias
+    # correction's magnitude and the rho~1 test's standard-error reduction --
+    # a weak corr(e,m) mutes both effects even when everything else (including
+    # rho_hat itself) looks like the paper's regime. Worth checking directly
+    # rather than inferring from how strong/weak the downstream effects look,
+    # since e_hat and m_hat are already computed as part of the AR(1) and OLS
+    # fits above -- see docs/ISSUE2.md for how the paper's own reported
+    # corr(e,m) (-0.955 for VWNY, Table 2) compares.
+    m_hat = ar1["resid"]
+    e_hat = ols["resid"]
+    corr_em = float(np.corrcoef(e_hat, m_hat)[0, 1])
+
     return {
         "T": ols["T"],
         "rho_hat": ar1["rho_hat"],
         "se_rho": ar1["se_rho"],
         "kendall_bias": ar1["kendall_bias"],
+        "corr_em": corr_em,
+        "gamma_hat": cond.gamma_hat,
         "ols_b": ols["b_hat"], "ols_se": ols["se_b"], "ols_p": ols["p"],
         "stambaugh_b": stam.b_hat_adj, "stambaugh_se": stam.se, "stambaugh_p": stam.p,
         "rho1_b": cond.b_hat_adj, "rho1_se": cond.se, "rho1_t": cond.t, "rho1_p": cond.p,
