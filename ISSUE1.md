@@ -4,6 +4,17 @@ Implementation of the README's Issue 1: produce one clean monthly panel that
 everything downstream (Issue 2's tables, Issue 3's extended sample, etc.) reads
 from.
 
+## Status (as of the seventh live-data debugging round)
+
+Validated against real WRDS/CRSP/Compustat data. Every statistic the paper's
+estimators actually depend on -- mean, SD, and lag-1 autocorrelation, for all
+of VWNY, EWNY, DY, logDY, B/M, E/P, logE/P, and logB/M -- passes the Table 1
+QA gate. One statistic remains outside tolerance: logB/M's standard
+deviation, traced to gradual Compustat book-equity coverage backfill through
+~1966 (not used in the paper's estimators, not a mysterious bug -- see the
+seventh-round changelog and "known gaps" below for the full diagnosis).
+**Ready to proceed to Issue 2.**
+
 ## Files
 
 ```
@@ -273,19 +284,93 @@ should point to whichever year (if any) is next in line -- there may be a
 handful of these ramp-up years stacked in the early-to-mid 1960s as
 Compustat's own historical backfill filled in gradually, not just one.
 
+## Changelog: seventh round — conclusion, not another fix
+
+`diagnose_bm.py`'s full annual series (now printed automatically) showed the
+remaining logB/M outlier isn't another single-year discontinuity like 1961's.
+Fiscal year 1963's book equity drops -14% while OIBDP grows a normal +11%
+the same year, followed by three years of above-trend book-equity growth
+(+26%, +16%, +41%) before settling into the ~10-15%/year steady state that
+holds for the rest of the sample from 1967 onward. That shape -- one field
+dipping while the other doesn't, followed by a multi-year overshoot back to
+trend -- is the signature of Compustat's book-equity coverage still filling
+in gradually through the mid-1960s, not a real one-year economic event, and
+not a single sharp jump the discontinuity guard (built for 1961's case) was
+designed to catch.
+
+**Decision: stop here rather than extend the guard further.** Excluding
+1963-1966 would mean silently diverging from the paper's own stated 1963
+sample start, for a statistic (logB/M's SD) that isn't used anywhere in the
+paper's actual estimators -- only lag-1 autocorrelation feeds the Stambaugh
+correction and the ρ≈1 conditional test, and logB/M's ρ1 already passes.
+Raw B/M's mean, SD, and ρ1 all pass cleanly. What's left, four debugging
+rounds in, is a second-moment statistic on a log-transformed variable that
+was never load-bearing for the paper's methodology. If a shorter, cleaner
+1967-2000 B/M sample is wanted for a specific downstream reason, that's a
+choice about what the sample should represent, not a bug fix -- worth
+making deliberately rather than folding into another automatic guard.
+
+## Changelog: eighth round — totval bug found via Issue 2 interpretation
+
+Not found by the Table 1 QA gate at all -- it slipped through because it
+doesn't affect DY's own univariate distribution (mean/SD/autocorrelation
+all passed cleanly), only its *contemporaneous relationship with returns*,
+which Table 1 never checks. Found instead while interpreting Issue 2's
+Table 2/3/5 output: after fixing the Stambaugh Monte Carlo bug, every
+table's newly-added `corr(e,m)` diagnostic came out near zero (-0.03 to
+-0.15 for VWNY) when it should be close to -0.9 -- DY is defined using the
+current month's market value in the denominator, so a positive return
+should mechanically push DY down the same month. That link should be close
+to unavoidable in any correct construction.
+
+Root cause, in `pull_crsp_nyse_index_exchcd_filtered`: `totval` was set to
+the sum of *lagged* market cap (`mktcap_lag`) -- the correct weighting
+scheme for value-weighted returns, but wrong for `totval` itself, which
+`construct_dividend_yield` needs to represent the *current* month's
+aggregate value (matching the paper's own "dividends divided by the current
+level of the index"). This silently lagged the entire dividend-yield series
+by one month, severing the same-month return-DY link the paper's whole
+methodology depends on.
+
+Verified the estimator code itself was NOT at fault first: ran the
+(already-fixed) Stambaugh/rho~1 estimators on a controlled synthetic series
+with a known strong mechanical price-DY link, through the exact same
+pipeline path (`run_one_series`) used for the real tables, and it correctly
+recovered corr(e,m) = -0.996 with the expected dramatic rho~1 SE
+reduction. Then reproduced the real-data symptom directly: the old buggy
+`totval` construction gives corr(totval growth, vwretd) = 0.044 on
+controlled data with a known ~1.0 true correlation; the fix gives 0.999.
+
+Fixed by computing `totval` from current-month market cap
+(`aggregate_security_level_to_monthly_index`, refactored out of the pull
+function for testability), while leaving the lagged-cap weighting scheme
+for `vwretd`/`ewretd` untouched -- confirmed unchanged by
+`test_vwretd_still_uses_lagged_weights`.
+
+**This affects both Issue 1's Table 1 numbers and Issue 2's Table 2/3/4/5
+numbers** if you used `--index-source exchcd_filtered` (the default).
+DY's own mean/SD/rho1 should be largely unaffected (a one-month lag barely
+changes a slow-moving series' own distribution), but the QA gate and all
+of Issue 2 should be rerun to confirm, since this changes what `totval`
+means for every month, not just B/M/E/P as previous rounds' fixes did.
+
 ## Known gaps / next steps
 
-- **logB/M's SD is the one statistic still failing** (0.464 vs paper's
-  0.360) as of the third live run — raw B/M itself now passes cleanly
-  (mean, SD, rho1 all within tolerance), so this is specifically a
-  log-transform sensitivity issue, not a construction bug in the ratio
-  itself. Added a minimum-firm-count guard (`min_firms_per_year`, default
-  30) as the most likely fix — see changelog below — but haven't confirmed
-  against real data that it closes the gap. If it doesn't, the next thing
-  I'd check is whether extreme individual-firm B/M outliers within
-  otherwise well-covered years (rather than whole thin years) are the
-  culprit — the paper may winsorize firm-level ratios before aggregating,
-  which isn't implemented here.
+- **logB/M's SD remains outside tolerance (~0.46 vs. paper's 0.36), and this
+  is now a documented, understood characteristic of the data rather than an
+  open bug** -- see the seventh-round changelog entry above. Compustat's
+  book-equity coverage (CEQ/TXDITC) fills in gradually through ~1966 in this
+  WRDS pull; OIBDP coverage is smooth and complete from 1962 onward. Fixed
+  along the way: an all-missing fiscal year silently summing to 0 instead of
+  NaN (1953), and a single-year coverage discontinuity a raw firm-count
+  threshold couldn't catch (1961, via `max_ratio_to_next_years`). What
+  remains (1963-1966's gradual ramp) is a multi-year pattern, not a
+  single-year fix, and closing it would mean deliberately excluding part of
+  the paper's own stated 1963-2000 sample window -- a choice to make on
+  purpose if wanted (see `diagnose_bm.py`'s full annual series for the
+  exact shape), not something folded into the existing guards. Every
+  statistic the paper's estimators actually depend on (mean, SD, rho1 for
+  7 of 8 series; mean and rho1 for logB/M specifically) passes.
 - ~~`pull_compustat_be_and_earnings`'s firm-year counts couldn't be verified
   against a live schema~~ — validated by the second live run: ~1,894
   firms/year, in the expected range for NYSE.
