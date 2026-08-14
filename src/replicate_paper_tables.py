@@ -115,14 +115,82 @@ def print_paper_style(table: pd.DataFrame, title: str):
 # Main: Tables 2, 3, 4, 5
 # --------------------------------------------------------------------------
 
+def run_extended(df: pd.DataFrame, n_sims: int) -> list[pd.DataFrame]:
+    """
+    Issue 3: the same regressions carried past the paper's 2000 cutoff.
+
+    The end date is taken from the panel rather than hard-coded, because the
+    two CRSP schemas reach different dates -- the legacy SIZ tables stop at
+    2024-12-31 and CIZ runs a year further (see ISSUE2.md). Hard-coding an end
+    would silently truncate one of them, which is the same class of failure the
+    frozen SIZ tables already caused once.
+
+    Two windows, answering different questions:
+
+      - 1946 to present: does the paper's conclusion survive the extra 25
+        years? This is the headline extension result.
+      - 2001 to present: does it hold in data Lewellen never saw? This is the
+        stricter test, and it is where the interesting answer is -- DY's
+        autocorrelation falls to ~0.95 here, below the paper's own stated
+        threshold of roughly 0.99 for 25 years of monthly data (Section 2.4),
+        so the conditional test is expected to lose power. Its Table A.1
+        tabulates precisely that collapse. Reporting the window is therefore a
+        demonstration of the paper's stated limitation rather than a
+        counterexample to it, and the rho column is the number to read first.
+    """
+    end = df["date"].max()
+    end_str = end.strftime("%Y-%m-%d")
+    end_lbl = end.strftime("%Y")
+    tables = []
+
+    for start, start_lbl, title in [
+        ("1946-01-01", "1946", "full sample extended to the present"),
+        ("2001-01-01", "2001", "out of sample -- data the paper never saw"),
+    ]:
+        t = run_table(df, "logDY", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
+                      f"{start_lbl}-{end_lbl}", start, end_str, n_sims=n_sims)
+        print_paper_style(t, f"EXTENDED — Dividend yield predicts NYSE returns, "
+                             f"{start_lbl}-{end_lbl} ({title})")
+        tables.append(t)
+
+    if tables and not tables[-1].empty:
+        rho = tables[-1]["rho_hat"].iloc[0]
+        print(f"Post-2000 AR(1) rho for logDY: {rho:.4f}")
+        if rho < 0.98:
+            print("  Below the paper's ~0.98 rule of thumb (Section 2.4): the rho~1\n"
+                  "  conditional test has little power on this window by the paper's\n"
+                  "  own analysis, so a null result here is expected rather than\n"
+                  "  contradictory. Read the OLS and Stambaugh rows instead.\n")
+        else:
+            print("  Clears the paper's ~0.98 rule of thumb; the conditional test\n"
+                  "  remains applicable on this window.\n")
+    return tables
+
+
 def main():
     p = argparse.ArgumentParser(description="Issue 2: core replication (Tables 2, 3, 4, 5)")
     p.add_argument("panel_csv", help="path to the QA-gated master panel from Issue 1 (e.g. data/master_panel.csv)")
     p.add_argument("--n-sims", type=int, default=8000, help="Monte Carlo draws for the Stambaugh correction")
     p.add_argument("--out-dir", default="output")
+    p.add_argument("--extended", action="store_true",
+                    help="also run the Issue 3 extension windows (1946-present and "
+                         "2001-present), with the end date read from the panel")
+    p.add_argument("--tag", default=None,
+                    help="suffix for the output CSV, e.g. --tag siz / --tag ciz, so the "
+                         "two CRSP schemas can be run side by side without overwriting")
+    p.add_argument("--end", default=None,
+                    help="truncate the panel here (YYYY-MM-DD) before running anything. "
+                         "Needed to compare the two CRSP schemas on a matched window: the "
+                         "legacy SIZ panel ends at 2024-12-31 and CIZ a year later, so "
+                         "without this the extension windows have different lengths and "
+                         "the comparison is not like for like.")
     args = p.parse_args()
 
     df = pd.read_csv(args.panel_csv, parse_dates=["date"])
+    if args.end:
+        df = df[df["date"] <= pd.to_datetime(args.end)]
+        print(f"Panel truncated at {args.end}: {len(df)} months "
+              f"({df['date'].min().date()} .. {df['date'].max().date()})\n")
     os.makedirs(args.out_dir, exist_ok=True)
     all_tables = []
 
@@ -181,8 +249,14 @@ def main():
     print_paper_style(t6b, "TABLE 6b — Earnings-price ratio predicts NYSE returns, 1963-2000")
     all_tables += [t6a, t6b]
 
+    if args.extended:
+        all_tables += run_extended(df, n_sims=args.n_sims)
+
     combined = pd.concat(all_tables, ignore_index=True)
-    out_path = os.path.join(args.out_dir, "issue2_tables_2_3_4_5_6.csv")
+    suffix = f"_{args.tag}" if args.tag else ""
+    name = ("issue2_tables_2_3_4_5_6_extended" if args.extended
+            else "issue2_tables_2_3_4_5_6")
+    out_path = os.path.join(args.out_dir, f"{name}{suffix}.csv")
     combined.to_csv(out_path, index=False)
     print(f"Wrote combined results: {out_path} ({len(combined)} rows)")
 

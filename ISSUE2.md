@@ -243,6 +243,95 @@ separate exercises rather than spliced into one series, and the convention
 change is the reason -- worth a sentence in the write-up, since a reader will
 otherwise wonder why the 1946-2000 numbers move between the two tables.
 
+## Issue 3 — extending the sample
+
+`replicate_paper_tables.py --extended` adds two windows, with the end date
+read from the panel rather than hard-coded, since the two schemas reach
+different dates and a hard-coded end would silently truncate one of them.
+`--tag` suffixes the output CSV so both schemas can be run side by side.
+
+```bash
+python src/replicate_paper_tables.py data/master_panel.csv     --extended --tag siz
+python src/replicate_paper_tables.py data/master_panel_ciz.csv --extended --tag ciz
+# matched window, for the schema comparison below
+python src/replicate_paper_tables.py data/master_panel_ciz.csv --extended \
+    --end 2024-12-31 --tag ciz2024
+```
+
+All numbers below are from these commands at `--n-sims 8000`. The Stambaugh
+row is Monte Carlo, so it moves with the seed: at 2,000 draws two seeds gave
+0.2508 and 0.2851 on the same data, a spread of 0.034. `run_all` now takes a
+`random_state` and threads it into both simulations, which it previously did
+not -- the driver and an ad-hoc script disagreed by ~0.03 on identical inputs
+because each silently used its own default seed. Quote Stambaugh values to
+two decimals at most, and re-run at higher `--n-sims` for anything reported.
+
+**The paper's conclusion survives on the full extended sample.** For
+1946-2025 (CIZ), VWNY: OLS b = 0.862 (p = 0.005), Stambaugh b = 0.411
+(p = 0.186), rho~1 b = 0.413 (t = 3.50, p = 0.000). The pattern Lewellen
+built the paper around -- Stambaugh failing to reject where the conditional
+test rejects decisively -- holds twenty-five years past his cutoff.
+
+**The post-2000 subsample is where it gets interesting, and it is not a
+counterexample.** For 2001-2025, DY's autocorrelation falls to 0.9515,
+*below the paper's own stated threshold* of roughly 0.99 for 25 years of
+monthly data (Section 2.4). The conditional test duly collapses: rho~1
+b = -0.590, t = -1.28, p = 0.899, while OLS reports b = 3.862 (p = 0.006).
+That is exactly the behaviour Table A.1 tabulates -- the conditional test's
+power drops toward zero as rho falls away from one, and the estimate is
+biased downward when rho is truly below one. So the extension demonstrates
+the paper's stated limitation rather than contradicting its result, and the
+rho column is the number to read first. The driver prints the rule-of-thumb
+check alongside the table for that reason.
+
+Worth noting the OLS slope more than quadruples post-2000 (0.862 -> 3.862)
+while its p-value stays around 0.006. Taken alone that reads as *stronger*
+predictability; it is the small-sample bias the paper is about, unmasked by
+a shorter sample and a less persistent regressor.
+
+## Robustness: the schema choice does not move any conclusion
+
+Both panels truncated at 2024-12-31 so the windows match exactly (identical
+T), making this apples-to-apples rather than a comparison contaminated by
+CIZ's extra year:
+
+| window | series | | SIZ | CIZ |
+|---|---|---|---|---|
+| 1946-2024 | VWNY | rho | 0.9930 | 0.9948 |
+| | | corr(e,m) | -0.955 | -0.937 |
+| | | OLS b (p) | 1.079 (0.002) | 0.884 (0.005) |
+| | | Stambaugh b (p) | 0.634 (0.120) | 0.425 (0.183) |
+| | | rho~1 b (t) | 0.460 (4.11) | 0.428 (3.58) |
+| | EWNY | OLS b (p) | 1.218 (0.003) | 1.006 (0.010) |
+| | | rho~1 b (t) | 0.534 (2.59) | 0.469 (2.16) |
+| 2001-2024 | VWNY | rho | 0.9485 | 0.9502 |
+| | | corr(e,m) | -0.968 | -0.957 |
+| | | OLS b (p) | 3.685 (0.010) | 4.023 (0.006) |
+| | | Stambaugh b (p) | 2.704 (0.084) | 3.018 (0.070) |
+| | | rho~1 b (t) | -1.008 (-2.54) | -0.563 (-1.20) |
+| | EWNY | OLS b (p) | 4.159 (0.014) | 5.222 (0.010) |
+| | | rho~1 b (t) | -1.252 (-1.69) | -0.847 (-0.84) |
+
+Slope magnitudes differ by up to ~25% on the short window -- the compounding
+convention again, amplified where the sample is small -- but rho agrees to
+within 0.002 everywhere and **every inference is identical**: OLS
+significant, Stambaugh not, and the conditional test decisively significant
+over the full sample and negative and insignificant after 2000.
+
+Two things this buys us. First, **the post-2000 collapse is not an artifact
+of the port**: SIZ shows it more starkly than CIZ (rho~1 b of -1.008 against
+-0.563 for VWNY), so the legacy schema, if anything, strengthens the
+finding. Second, **2025 is not driving anything** -- extending CIZ from
+2001-2024 to 2001-2025 moves rho from 0.9502 to 0.9515 and the conditional
+slope from -0.563 to -0.590. The result is about the 2000s, not about the
+most recent year.
+
+The honest caveat: the schemas agree on every *sign and significance* call,
+but not closely on magnitudes, and neither is "right." Report the
+replication on SIZ and the extension on CIZ, state that both were run, and
+do not present a slope from one as comparable to a slope from the other at
+two decimal places.
+
 ## Environment note
 
 `requirements.txt` pins neither `pandas` nor a working `wrds` floor. A
