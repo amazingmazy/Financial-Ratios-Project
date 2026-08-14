@@ -10,15 +10,12 @@ against the real, QA-gated master panel from Issue 1, reproducing:
   - Table 3: dividend yield, subsamples 1946-1972 and 1973-2000
   - Table 4: sensitivity to 1995-2000 (1946-1994 vs. 1946-2000)
   - Table 5: book-to-market, June 1963-Dec 1994 and June 1963-Dec 2000
+  - Table 6: earnings-price ratio, June 1963-Dec 1994 and June 1963-Dec 2000
 
-Per instruction: no year exclusion is applied to the B/M sample -- the full
-1963-2000 window is used as-is, including the 1963-1966 period whose data
-characteristics are documented in docs/ISSUE1.md (not excluded, just noted).
-
-Table 6 (E/P) is not run by default since the README recommends B/M first,
-but uses identical machinery -- see run_table(df, "logE/P", ...) to add it;
-E/P's underlying data passed every Table 1 QA check cleanly, including SD,
-so it's arguably in even better shape than B/M for a next pass.
+Per instruction: no year exclusion is applied to the B/M or E/P samples --
+the full 1963-2000 window is used as-is, including the 1963-1966 period
+whose data characteristics are documented in docs/ISSUE1.md (not excluded,
+just noted).
 
 Usage:
     python src/replicate_paper_tables.py data/master_panel.csv
@@ -172,8 +169,20 @@ def main():
     print_paper_style(t5b, "TABLE 5b — Book-to-market predicts NYSE returns, 1963-2000")
     all_tables += [t5a, t5b]
 
+    # ---- Table 6: E/P, June 1963-Dec 1994 and June 1963-Dec 2000 ----
+    # Identical machinery to Table 5, swapping logB/M for logE/P. Per Issue 1's
+    # QA gate, E/P's underlying data (mean, SD, rho1) passed every check
+    # cleanly -- unlike B/M, there's no known coverage-ramp-up caveat here.
+    t6a = run_table(df, "logE/P", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
+                     "1963-1994", "1963-06-01", "1994-12-31", n_sims=args.n_sims)
+    print_paper_style(t6a, "TABLE 6a — Earnings-price ratio predicts NYSE returns, 1963-1994")
+    t6b = run_table(df, "logE/P", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
+                     "1963-2000", "1963-06-01", "2000-12-31", n_sims=args.n_sims)
+    print_paper_style(t6b, "TABLE 6b — Earnings-price ratio predicts NYSE returns, 1963-2000")
+    all_tables += [t6a, t6b]
+
     combined = pd.concat(all_tables, ignore_index=True)
-    out_path = os.path.join(args.out_dir, "issue2_tables_2_3_4_5.csv")
+    out_path = os.path.join(args.out_dir, "issue2_tables_2_3_4_5_6.csv")
     combined.to_csv(out_path, index=False)
     print(f"Wrote combined results: {out_path} ({len(combined)} rows)")
 

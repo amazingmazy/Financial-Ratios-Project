@@ -32,18 +32,30 @@ This produces, in order:
   paper's whole argument about the 1995-2000 run-up hinges on
 - **Table 5a/5b** — book-to-market predicts returns, June 1963-Dec 1994 and
   June 1963-Dec 2000
+- **Table 6a/6b** — earnings-price ratio predicts returns, same two windows,
+  identical machinery to Table 5 with `logE/P` swapped in for `logB/M`
 
-Each table prints in a layout matching the paper's own (AR(1) ρ, then one
-row per estimator — OLS, Stambaugh, ρ≈1 — each showing the coefficient,
-standard error, and p-value), and all results are also written to
-`output/issue2_tables_2_3_4_5.csv` in tidy long format for further analysis
-or plotting.
+Each table prints a `corr(e,m)` diagnostic alongside AR(1) ρ — the
+correlation between return shocks and predictor-innovation shocks, which
+drives both the Stambaugh correction's magnitude and the ρ≈1 test's
+standard-error reduction. For DY this should land close to the paper's
+reported -0.955; a value near zero was the symptom of a real bug (see
+`docs/ISSUE1.md`'s eighth-round changelog) rather than a property of the
+data. For B/M and E/P, expect it to run somewhat weaker than DY's, since
+their "shocks" combine monthly price moves with much less frequent annual
+accounting updates.
 
-**No year exclusion is applied to the B/M sample.** Per your instruction,
-Table 5 uses the full 1963-2000 window as constructed in Issue 1, including
-the 1963-1966 period whose data characteristics (gradual Compustat
-book-equity coverage backfill) are documented in `docs/ISSUE1.md` but not
-excluded here.
+Each table prints in a layout matching the paper's own (AR(1) ρ, corr(e,m),
+then one row per estimator — OLS, Stambaugh, ρ≈1 — each showing the
+coefficient, standard error, and p-value), and all results are also written
+to `output/issue2_tables_2_3_4_5_6.csv` in tidy long format for further
+analysis or plotting.
+
+**No year exclusion is applied to the B/M or E/P samples.** Per your
+instruction, Tables 5 and 6 use the full 1963-2000 window as constructed in
+Issue 1, including the 1963-1966 period whose data characteristics
+(gradual Compustat book-equity coverage backfill) are documented in
+`docs/ISSUE1.md` but not excluded here.
 
 ## Runtime
 
@@ -55,12 +67,6 @@ elsewhere in this project) for final numbers.
 
 ## What's not yet built
 
-- **Table 6 (E/P)** isn't run by default — the README recommends B/M first,
-  which is what's implemented. Adding it is a one-line change
-  (`run_table(df, "logE/P", ...)` with the same window arguments as Table
-  5), since it uses identical machinery. Worth noting: E/P's underlying
-  data passed every Table 1 QA check cleanly, including its SD (unlike
-  B/M's), so it may be an easier next table to add.
 - **Issue 2.1 (Table 1)** is effectively already covered by
   `src/qa_table1.py`, which computes the same summary statistics as part of
   the Issue 1 QA gate rather than as a separate deliverable here.
