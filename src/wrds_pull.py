@@ -120,6 +120,88 @@ def pull_crsp_nyse_index_exchcd_filtered(conn, start: str = "1926-01-01",
     return aggregate_security_level_to_monthly_index(sec)
 
 
+def pull_crsp_nyse_index_ciz(conn, start: str = "1926-01-01",
+                              end: str | None = None) -> pd.DataFrame:
+    """
+    CIZ-schema equivalent of `pull_crsp_nyse_index_exchcd_filtered`.
+
+    CRSP's Flat File Format 2.0 ("CIZ") replaced the legacy "SIZ" schema in
+    January 2025, and the legacy tables stopped being updated: as of this
+    writing `crsp.msf` and `crsp.msi` end at 2024-12-31 while `crsp.msf_v2`
+    runs to 2025-12-31. The replication window (1946-2000) sits entirely
+    inside the legacy range, so this function exists for Issue 3 -- extending
+    the sample to the present -- rather than to change the replication. Note
+    that the legacy path fails *silently*: it returns a short panel rather
+    than an error, so an extension built on it would quietly stop a year early.
+
+    Two simplifications relative to the SIZ path:
+
+      - No join. `crsp.msf_v2` carries the security descriptors (exchange,
+        share type, issuer type) inline, so `crsp.msenames` and its
+        namedt/nameendt date-range join are not needed.
+      - Delisting returns are already incorporated into `mthret`, so there is
+        no separate delisting file to merge.
+
+    Filter mapping from the SIZ version:
+
+        exchcd = 1                ->  primaryexch = 'N'
+        shrcd in (10, 11)         ->  securitytype = 'EQTY'
+                                      AND securitysubtype = 'COM'
+                                      AND sharetype = 'NS'
+                                      AND usincflg = 'Y'
+                                      AND issuertype in ('ACOR', 'CORP')
+        (n/a)                     ->  conditionaltype = 'RW'      (regular way)
+        (n/a)                     ->  tradingstatusflg = 'A'      (active)
+
+    The last two have no SIZ analogue and exclude securities that are halted,
+    suspended, or settling on non-standard terms.
+
+    Returns the same column set as the SIZ path (permno/date/ret/retx/prc/
+    shrout, renamed from the CIZ names) and hands off to the same
+    `aggregate_security_level_to_monthly_index`, so the aggregation logic --
+    and the `totval` fix that logic encodes -- is shared rather than
+    duplicated. `crsp.msf_v2` also publishes `mthcap` directly, which would
+    avoid recomputing abs(prc)*shrout; we deliberately do not use it, so that
+    both schemas produce market cap by exactly the same arithmetic and any
+    difference between the two pulls is attributable to the source data
+    rather than to two different cap definitions.
+
+    One consequence worth carrying into the write-up: CIZ `mthret` compounds
+    daily returns with dividends reinvested on the ex-date, whereas legacy
+    `ret` was a month-to-month holding-period return reinvested at month end.
+    Because the dividend flow is reconstructed as
+    (vwretd - vwretx) * totval_{t-1}, that convention change propagates into
+    DY, so the replication and the extension do not sit on identical footing.
+    """
+    _require_conn(conn)
+    print(f"  [wrds_pull.py version: {WRDS_PULL_VERSION}]")
+    query = """
+        SELECT permno,
+               mthcaldt AS date,
+               mthret   AS ret,
+               mthretx  AS retx,
+               mthprc   AS prc,
+               shrout
+        FROM crsp.msf_v2
+        WHERE primaryexch = 'N'
+            AND securitytype = 'EQTY'
+            AND securitysubtype = 'COM'
+            AND sharetype = 'NS'
+            AND usincflg = 'Y'
+            AND issuertype IN ('ACOR', 'CORP')
+            AND conditionaltype = 'RW'
+            AND tradingstatusflg = 'A'
+            AND mthcaldt >= %(start)s
+            {end_clause}
+    """.format(end_clause="AND mthcaldt <= %(end)s" if end else "")
+    params = {"start": start}
+    if end:
+        params["end"] = end
+    sec = conn.raw_sql(query, params=params, date_cols=["date"])
+    sec["date"] = pd.to_datetime(sec["date"])
+    return aggregate_security_level_to_monthly_index(sec)
+
+
 def aggregate_security_level_to_monthly_index(sec: pd.DataFrame) -> pd.DataFrame:
     """
     Pure aggregation step, factored out of pull_crsp_nyse_index_exchcd_filtered
@@ -193,6 +275,45 @@ def pull_crsp_riskfree(conn, start: str = "1926-01-01", end: str | None = None) 
     df["date"] = pd.to_datetime(df["date"]).values.astype("datetime64[M]")
     df["rf"] = df["rf"] * 100  # CRSP stores as a decimal fraction; match percent convention
     return df.set_index("date").sort_index()
+
+
+def pull_riskfree_french(start: str = "1926-01-01",
+                          end: str | None = None) -> pd.DataFrame:
+    """
+    One-month T-bill return from the Ken French Data Library, as a current
+    substitute for `crsp.mcti` (which is frozen at 2024-12-31 -- see
+    `pull_crsp_nyse_index_ciz`). Same output contract as
+    `pull_crsp_riskfree`: indexed by month, single column `rf`, in percent.
+    Takes no `conn`; French's library is a public download.
+
+    Why French rather than a CIZ treasury table. CRSP's current treasury files
+    do not expose a drop-in replacement for `mcti.t30ret`. `crsp.tfz_mth_rf`
+    carries the right series (kytreasnox 2000001, "CRSP Risk Free Rates -
+    1-Month (Nominal)", 1925-2025) but publishes *yields to maturity*, not
+    realised monthly returns; checked against `t30ret` over 1946-2024 it
+    correlates only 0.977, which is a yield-versus-return difference rather
+    than noise. `crsp.tfz_mth_bp` does hold returns but they are the Fama bond
+    maturity portfolios, and it starts in 1952 -- too late for a 1946 sample.
+
+    French's RF is the one-month T-bill rate and is the standard definition of
+    "excess return" in this literature, including the papers Lewellen builds
+    on. Validated against `crsp.mcti.t30ret` over the 948 overlapping months
+    from 1946-01 to 2024-12: correlation 0.9958, mean absolute difference
+    0.012pp, maximum 0.175pp. Essentially all of the residual is French
+    publishing to two decimals (0.39 against CRSP's 0.3907), so these are the
+    same series at different printed precision rather than two measurements.
+
+    Only excess returns depend on this; nominal VWNY/EWNY are untouched.
+    """
+    from public_fallback import pull_french_factors_and_rf
+
+    fr = pull_french_factors_and_rf(start)
+    df = fr[["rf"]].copy()
+    df.index = pd.to_datetime(df.index).values.astype("datetime64[M]")
+    df.index.name = "date"
+    if end:
+        df = df.loc[df.index <= pd.to_datetime(end).to_numpy().astype("datetime64[M]")]
+    return df.sort_index()
 
 
 # --------------------------------------------------------------------------

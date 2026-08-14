@@ -46,7 +46,12 @@ def run_wrds(start: str, end: str | None, compustat: bool, index_source: str = "
         print("Connecting to WRDS (set WRDS_USERNAME to avoid the prompt)...")
         db = wrds.Connection()
     try:
-        if index_source == "exchcd_filtered":
+        if index_source == "ciz":
+            print("Pulling strictly NYSE-only index (crsp.msf_v2, CIZ schema)... "
+                  "required for any sample past 2024-12-31, where the legacy SIZ "
+                  "tables stop -- see wrds_pull.pull_crsp_nyse_index_ciz.")
+            crsp_index = wrds_pull.pull_crsp_nyse_index_ciz(db, start=start, end=end)
+        elif index_source == "exchcd_filtered":
             print("Pulling strictly NYSE-only index (crsp.msf, exchcd==1)... "
                   "this is slower than crsp.msi but avoids AMEX/NASDAQ contamination "
                   "post-1962/1972 -- see wrds_pull.py docstring.")
@@ -57,11 +62,20 @@ def run_wrds(start: str, end: str | None, compustat: bool, index_source: str = "
                   "NASDAQ (~1972) -- use --index-source exchcd_filtered if your "
                   "sample extends past those dates and you need strict NYSE-only.")
             crsp_index = wrds_pull.pull_crsp_nyse_index(db, start=start, end=end)
-        print(f"  -> {len(crsp_index)} months")
+        print(f"  -> {len(crsp_index)} months "
+              f"({crsp_index.index.min().date()} .. {crsp_index.index.max().date()})")
 
-        print("Pulling CRSP risk-free rate (crsp.mcti)...")
-        rf = wrds_pull.pull_crsp_riskfree(db, start=start, end=end)
-        print(f"  -> {len(rf)} months")
+        # crsp.mcti is frozen at 2024-12-31, so a CIZ-era pull would silently
+        # lose the risk-free rate for exactly the months the extension is about.
+        if index_source == "ciz":
+            print("Pulling risk-free rate from the Ken French Data Library "
+                  "(crsp.mcti is frozen at 2024-12-31)...")
+            rf = wrds_pull.pull_riskfree_french(start=start, end=end)
+        else:
+            print("Pulling CRSP risk-free rate (crsp.mcti)...")
+            rf = wrds_pull.pull_crsp_riskfree(db, start=start, end=end)
+        print(f"  -> {len(rf)} months "
+              f"({rf.index.min().date()} .. {rf.index.max().date()})")
 
         print("Pulling CPI from FRED...")
         from public_fallback import pull_fred_cpi
@@ -113,10 +127,15 @@ def main():
     p = argparse.ArgumentParser(description="Issue 1: build the master monthly panel")
     p.add_argument("--source", choices=["wrds", "synthetic"], default="synthetic",
                     help="'wrds' requires a live WRDS connection; 'synthetic' is an offline dry run")
-    p.add_argument("--index-source", choices=["exchcd_filtered", "msi"], default="exchcd_filtered",
+    p.add_argument("--index-source", choices=["exchcd_filtered", "msi", "ciz"], default="exchcd_filtered",
                     help="'exchcd_filtered' (default) builds a strict NYSE-only index from security-level "
                          "data -- slower but avoids crsp.msi's AMEX(~1962)/NASDAQ(~1972) universe drift. "
-                         "'msi' is faster but only reliable for samples entirely before ~1962.")
+                         "'msi' is faster but only reliable for samples entirely before ~1962. "
+                         "'ciz' is the same strict-NYSE construction against CRSP's current CIZ schema "
+                         "(crsp.msf_v2) and is REQUIRED for any sample past 2024-12-31, where the legacy "
+                         "SIZ tables stop -- they return a short panel rather than an error. 'ciz' also "
+                         "sources the risk-free rate from the Ken French library, since crsp.mcti is "
+                         "frozen at the same date.")
     p.add_argument("--start", default="1946-01-01")
     p.add_argument("--end", default=None)
     p.add_argument("--n-months", type=int, default=660, help="only used with --source synthetic")

@@ -205,6 +205,44 @@ dividend flow is reconstructed as `(vwretd - vwretx) * totval_{t-1}`, that
 convention change propagates into DY, and the replication and the extension
 will not sit on identical footing.
 
+## Changelog: CIZ pull added, and which schema to use where
+
+`pull_crsp_nyse_index_ciz` builds the same strict-NYSE index from
+`crsp.msf_v2` and hands off to the same
+`aggregate_security_level_to_monthly_index`, so the `totval` fix is shared
+rather than duplicated. `crsp.msf_v2` carries the security descriptors
+inline, so no `msenames`-style date-range join is needed. Reached via
+`--index-source ciz`.
+
+The risk-free rate had to move too, since `crsp.mcti` is frozen at the same
+date. CRSP has no drop-in replacement: `crsp.tfz_mth_rf` carries the right
+series (kytreasnox 2000001, 1-Month Nominal, 1925-2025) but publishes yields
+to maturity, correlating only 0.977 with `t30ret`; `crsp.tfz_mth_bp` holds
+returns but they are Fama bond portfolios and start in 1952. `ciz` therefore
+takes RF from the Ken French library, validated against `t30ret` across the
+948 overlapping months: correlation 0.9958, mean absolute difference
+0.012pp, essentially all of it French printing two decimals (0.39 against
+0.3907). Only excess returns depend on this.
+
+**Both schemas run over 1946-2000, and SIZ reproduces the paper better:**
+
+| | paper | SIZ | CIZ |
+|---|---|---|---|
+| assertions passing | -- | 216 | 204 |
+| VWNY mean | 1.040 | 1.042 | 1.038 |
+| logDY s.d. | 0.330 | 0.333 | 0.349 |
+| Table 2 OLS b | 0.917 | 0.978 | 0.827 |
+| Table 2 rho~1 t | 4.67 | 4.56 | 3.79 |
+| corr(e,m) | -0.955 | -0.949 | -0.928 |
+
+This is the return-compounding difference showing up where it was predicted
+to, not a defect in either pull. **Decision: SIZ for the replication, CIZ
+for the extension.** The replication should sit on the convention closest to
+Lewellen's own, and the extension has no choice. The two are reported as
+separate exercises rather than spliced into one series, and the convention
+change is the reason -- worth a sentence in the write-up, since a reader will
+otherwise wonder why the 1946-2000 numbers move between the two tables.
+
 ## Environment note
 
 `requirements.txt` pins neither `pandas` nor a working `wrds` floor. A
