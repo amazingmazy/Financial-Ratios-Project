@@ -32,8 +32,19 @@ def run_wrds(start: str, end: str | None, compustat: bool, index_source: str = "
     import wrds
     import wrds_pull
 
-    print("Connecting to WRDS...")
-    db = wrds.Connection()
+    # Read the username from the environment when it is available so the pull
+    # can run unattended. A bare wrds.Connection() falls back to an interactive
+    # input() prompt, which raises EOFError under any non-interactive runner --
+    # cron, CI, or a doit task -- and makes end-to-end automation impossible.
+    # The password is never handled here: wrds resolves it from ~/.pgpass (on
+    # Windows, %APPDATA%/postgresql/pgpass.conf), which lives outside the repo.
+    wrds_username = os.environ.get("WRDS_USERNAME")
+    if wrds_username:
+        print(f"Connecting to WRDS as {wrds_username}...")
+        db = wrds.Connection(wrds_username=wrds_username)
+    else:
+        print("Connecting to WRDS (set WRDS_USERNAME to avoid the prompt)...")
+        db = wrds.Connection()
     try:
         if index_source == "exchcd_filtered":
             print("Pulling strictly NYSE-only index (crsp.msf, exchcd==1)... "

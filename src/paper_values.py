@@ -157,12 +157,14 @@ TABLE_1: dict[str, dict[str, SummaryStats]] = {
         "VWNY":  SummaryStats(1.10, 4.44, -0.39, 0.001, 0.065, -0.013),
         "EWNY":  SummaryStats(1.18, 5.18, -0.11, 0.125, 0.113, 0.030),
         "DY":    SummaryStats(3.59, 1.15, -0.19, 0.991, 0.899, 0.914),
-        # rho24 = 1.062 is impossible for a Pearson correlation. It is printed
-        # as-is in the paper, and it is the direct evidence that Lewellen's
-        # autocorrelations came from an autocovariance-ratio estimator that
-        # does not normalise to [-1, 1]. See TOLERANCES: this is why rho12 and
-        # rho24 are informational rather than gated -- exact agreement is
-        # unachievable by construction, independent of pipeline correctness.
+        # rho24 = 1.062 is impossible for a Pearson correlation, and it is
+        # printed as-is in the paper. Rather than an erratum, it is the single
+        # most useful clue in Table 1: it identifies the estimator. Only an
+        # unbounded statistic can exceed one, so Lewellen's autocorrelations
+        # must be lag-k OLS slopes (cov / var(x_{t-k})), not Pearson
+        # correlations (cov / sd*sd). Computing them that way reproduces this
+        # cell at 1.044 and every other lag-12/lag-24 cell to within 0.02.
+        # See qa_table1.lag_k_slope.
         "logDY": SummaryStats(1.22, 0.37, -0.81, 0.999, 0.996, 1.062),
     },
     "1963-2000": {
@@ -425,16 +427,27 @@ Tiers
 -----
   HARD/exact  Sample length T. Free to check, cannot legitimately drift.
   HARD/tight  Load-bearing: rho1, SD of log ratios, corr(e,m).
-  HARD/loose  Diagnostic: return means and SDs, ratio levels, slopes, SEs.
-  INFO        Reported but never gated: skew, rho12, rho24, adj_r2.
+  HARD/loose  Diagnostic: return means and SDs, ratio levels, slopes, SEs,
+              rho12, rho24.
+  INFO        Reported but never gated: skew, adj_r2, sd_e.
 
-Why skew/rho12/rho24 are informational (inherited from qa_table1.py's
-reasoning, which is sound): none of them enters any estimator; skew is
-dominated by single months such as October 1987; and the paper's own logDY
-rho24 of 1.062 exceeds one, which is impossible for a Pearson correlation and
-proves Lewellen used a non-normalising autocovariance-ratio estimator. Exact
-agreement at lags 12 and 24 is therefore unachievable by construction. We
-compute and report them; we do not fail on them.
+Only skewness is genuinely informational: it enters no estimator and is
+dominated by single months such as October 1987, so it moves on data revisions
+without telling us anything about the pipeline.
+
+A correction worth recording, because it changed the design. rho12 and rho24
+were initially demoted alongside skew on the grounds that the paper's own logDY
+rho24 of 1.062 exceeds one -- impossible for a Pearson correlation -- so exact
+agreement looked unachievable by construction. The premise was correct; the
+conclusion was not. An out-of-range value does not mean the statistic is
+irreproducible, it means the estimator has been misidentified: only an
+unbounded statistic can exceed one, so the paper's autocorrelations must be
+lag-k OLS slopes (cov / var(x_{t-k})) rather than Pearson correlations
+(cov / sd * sd). Recomputing on that basis reproduces every published lag-12
+and lag-24 cell to within 0.02, the 1.062 included. Both are now gated, which
+recovered roughly two dozen of the paper's numbers that had been written off.
+The general lesson: a statistic that cannot be reproduced with the obvious
+estimator is evidence about which estimator was used.
 """
 
 # Gate levels.
@@ -526,16 +539,26 @@ TABLE_1_TOL: dict[tuple[str, str], Tol] = {
     ("log", "skew"): Tol(abs_tol=0.25, gate=INFO, why="As above."),
 }
 
-# rho12 and rho24 are informational for every series kind -- see the module
-# discussion above (the paper's own logDY rho24 = 1.062 > 1).
+# rho12 and rho24 are GATED, having previously been written off as
+# irreproducible. See the module docstring: the paper's autocorrelations are
+# lag-k OLS slopes rather than Pearson correlations, and once computed that way
+# (qa_table1.lag_k_slope) every published lag-12 and lag-24 value reproduces to
+# within 0.02 -- including the logDY rho24 of 1.062 that exceeds one and was
+# the clue identifying the estimator in the first place.
+#
+# 0.03 sits just above the largest observed miss (0.018, logDY rho24 for
+# 1973-2000, the least stable cell in the table) while still being tight enough
+# that a wrong lag or a wrong estimator fails loudly: Pearson misses these
+# cells by up to 0.21 and the standard ACF by up to 0.38.
 for _kind in ("vw", "ew", "level", "log"):
-    TABLE_1_TOL[(_kind, "rho12")] = Tol(
-        abs_tol=0.05, gate=INFO,
-        why="Never enters an estimator; the paper's own lag-24 values are not "
-            "normalised to [-1,1], so exact agreement is not well defined.")
-    TABLE_1_TOL[(_kind, "rho24")] = Tol(
-        abs_tol=0.05, gate=INFO, why="As rho12.")
-del _kind
+    for _lag in ("rho12", "rho24"):
+        TABLE_1_TOL[(_kind, _lag)] = Tol(
+            abs_tol=0.03,
+            why="Reproducible once computed as a lag-k OLS slope, the paper's "
+                "own convention. Diagnostic rather than load-bearing -- only "
+                "lag 1 enters the estimators -- but a long-lag mismatch is a "
+                "good early signal that the persistence structure is wrong.")
+del _kind, _lag
 
 
 # -------------------------------------------------------------------------
