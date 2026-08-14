@@ -18,37 +18,31 @@ import sys
 import numpy as np
 import pandas as pd
 
+from paper_values import TABLE_1 as _PAPER_TABLE_1_RECORDS
+
 
 # --------------------------------------------------------------------------
 # Paper's published Table 1 values (Lewellen 2004, p. 219), for comparison.
 # Format: {sample_label: {series_label: (mean, sd, skew, rho1, rho12, rho24)}}
+#
+# Derived from paper_values.TABLE_1 rather than hard-coded here, so there is a
+# single transcription of the paper in the project. The previous hard-coded
+# copy had the minus sign dropped on every negative skewness (and on VWNY's
+# rho24 for 1973-2000): the published PDF's *text layer* omits the minus sign
+# on negative numbers, so copying from selected text yields `0.38` where the
+# rendered page shows `-0.38`. It never surfaced as a failure because skew and
+# rho12/rho24 are informational in SOFT_STATS below, but it made the printed
+# diagnostics wrong and would have become a real bug the moment anyone
+# promoted skew to a hard check.
+#
+# The tuple shape is preserved exactly, so qa_gate() below is unchanged.
 # --------------------------------------------------------------------------
 PAPER_TABLE_1 = {
-    "1946-2000": {
-        "VWNY":   (1.04, 4.08, 0.38, 0.032, 0.042, 0.014),
-        "EWNY":   (1.11, 4.80, 0.16, 0.136, 0.065, 0.027),
-        "DY":     (3.80, 1.20, 0.37, 0.992, 0.889, 0.812),
-        "logDY":  (1.28, 0.33, 0.53, 0.997, 0.948, 0.912),
-    },
-    "1946-1972": {
-        "VWNY":   (0.98, 3.67, 0.39, 0.079, 0.026, 0.066),
-        "EWNY":   (1.04, 4.38, 0.26, 0.150, 0.024, 0.021),
-        "DY":     (4.02, 1.21, 0.84, 0.992, 0.879, 0.774),
-        "logDY":  (1.35, 0.28, 0.56, 0.993, 0.876, 0.785),
-    },
-    "1973-2000": {
-        "VWNY":   (1.10, 4.44, 0.39, 0.001, 0.065, 0.013),
-        "EWNY":   (1.18, 5.18, 0.11, 0.125, 0.113, 0.030),
-        "DY":     (3.59, 1.15, 0.19, 0.991, 0.899, 0.914),
-        "logDY":  (1.22, 0.37, 0.81, 0.999, 0.996, 1.062),
-    },
-    # Compustat era, 1963-2000 -- only populated if B/M, E/P aren't NaN.
-    "1963-2000": {
-        "B/M":    (53.13, 18.28, 0.39, 0.990, 0.891, 0.837),
-        "logB/M": (3.91, 0.36, 0.19, 0.995, 0.951, 0.923),
-        "E/P":    (20.02, 7.01, 0.55, 0.988, 0.864, 0.770),
-        "logE/P": (2.94, 0.35, 0.14, 0.990, 0.891, 0.785),
-    },
+    window: {
+        series: (s.mean, s.sd, s.skew, s.rho1, s.rho12, s.rho24)
+        for series, s in rows.items()
+    }
+    for window, rows in _PAPER_TABLE_1_RECORDS.items()
 }
 
 STAT_NAMES = ["mean", "sd", "skew", "rho1", "rho12", "rho24"]
