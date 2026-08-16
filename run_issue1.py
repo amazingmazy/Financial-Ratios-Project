@@ -28,7 +28,7 @@ from qa_table1 import qa_gate
 
 
 def run_wrds(start: str, end: str | None, compustat: bool, index_source: str = "exchcd_filtered",
-             keep_diagnostics: bool = False) -> "pd.DataFrame":
+             keep_diagnostics: bool = False, include_deferred_taxes: bool = False) -> "pd.DataFrame":
     import wrds
     import wrds_pull
 
@@ -85,7 +85,9 @@ def run_wrds(start: str, end: str | None, compustat: bool, index_source: str = "
         compustat_annual, is_approx = None, False
         if compustat:
             print("Pulling Compustat book equity & operating earnings (comp.funda, via CCM link)...")
-            compustat_annual = wrds_pull.pull_compustat_be_and_earnings(db, start=start, end=end)
+            compustat_annual = wrds_pull.pull_compustat_be_and_earnings(
+                db, start=start, end=end,
+                include_deferred_taxes=include_deferred_taxes)
             print(f"  -> {compustat_annual['n_firms'].sum()} firm-years aggregated to "
                   f"{len(compustat_annual)} fiscal year-ends")
             print("\n  Annual aggregate table (scan for outlier years -- e.g. book_equity_sum\n"
@@ -139,6 +141,13 @@ def main():
     p.add_argument("--start", default="1946-01-01")
     p.add_argument("--end", default=None)
     p.add_argument("--n-months", type=int, default=660, help="only used with --source synthetic")
+    p.add_argument("--include-deferred-taxes", action="store_true",
+                    help="add TXDITC (deferred taxes and investment tax credit) to book "
+                         "equity, the Fama-French convention. Default is to omit it, which "
+                         "is what reproduces the paper: aggregate B/M averages 52.13 over "
+                         "1963-2000 without it against the paper's 53.13, and 58.69 with it. "
+                         "The paper never states its formula -- see "
+                         "wrds_pull.pull_compustat_be_and_earnings.")
     p.add_argument("--no-compustat", action="store_true",
                     help="skip Compustat pull even in --source wrds mode (e.g. if you only have CRSP access)")
     p.add_argument("--out", default="data/master_panel.csv")
@@ -156,6 +165,7 @@ def main():
 
     if args.source == "wrds":
         panel = run_wrds(args.start, args.end, compustat=not args.no_compustat,
+                         include_deferred_taxes=args.include_deferred_taxes,
                           index_source=args.index_source, keep_diagnostics=keep_diagnostics)
     else:
         panel = run_synthetic(args.n_months, args.start, keep_diagnostics=keep_diagnostics)

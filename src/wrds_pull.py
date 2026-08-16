@@ -417,21 +417,64 @@ def aggregate_firm_level_to_fiscal_year(firm_level: pd.DataFrame,
 
 def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
                                     end: str | None = None,
-                                    min_years_history: int = 3) -> pd.DataFrame:
+                                    min_years_history: int = 3,
+                                    include_deferred_taxes: bool = False) -> pd.DataFrame:
     """
     Construct aggregate NYSE book equity and operating income before depreciation,
     following the paper's construction (Section 3): book equity =
-    CEQ + TXDITC - preferred stock; operating earnings = OIBDP; both summed across
-    NYSE-listed firms (via the CRSP-Compustat merged linktable) with at least
-    `min_years_history` years of Compustat history.
+    CEQ [+ TXDITC] - preferred stock; operating earnings = OIBDP; both summed
+    across NYSE-listed firms (via the CRSP-Compustat merged linktable) with at
+    least `min_years_history` years of Compustat history.
 
-    NULL HANDLING: TXDITC (deferred taxes/investment credit) is coalesced to
-    0 if missing -- standard Fama-French convention, since a missing value
-    here usually means "not applicable" rather than "unknown." CEQ (common
-    equity) is deliberately NOT coalesced -- if it's genuinely missing, the
-    firm's book equity is unknown, not zero, and it should drop out of that
-    year's sum rather than be misrepresented. See aggregate_firm_level_to_fiscal_year
-    for how a fiscal year with too few non-missing CEQ values is handled.
+    DEFERRED TAXES (`include_deferred_taxes`, default False)
+    -------------------------------------------------------
+    Whether to add TXDITC -- deferred taxes and investment tax credit -- to book
+    equity. The Fama-French convention adds it; Lewellen appears not to. The
+    paper says only "the ratio of book equity to market equity" and never gives
+    a formula, so the text does not settle it. The data does:
+
+        aggregate B/M, 1963-2000 mean      value    vs paper
+        paper                              53.13      --
+        CEQ + TXDITC - preferred           58.69    +10.5%
+        CEQ - preferred                    52.13     -1.9%
+
+    TXDITC is 12.1% of our aggregate book equity, and dropping it closes almost
+    the entire gap. Three things corroborate that this is the cause rather than
+    a coincidence:
+
+      1. It cannot affect E/P, whose numerator is OIBDP -- an income-statement
+         flow with no deferred-tax component. That is exactly why E/P diverges
+         only about half as much as B/M (+5.0% against +10.5%).
+      2. The gap is widest in the 1970s-80s (decade means 69 and 77, against 63
+         and 66 once TXDITC is removed), precisely when accelerated depreciation
+         and high inflation made deferred taxes largest.
+      3. Ken French's own site documents that the deferred-tax treatment changed
+         after FASB 109, so the convention is not stable even within the
+         Fama-French lineage.
+
+    Default is False, i.e. the variant that reproduces the paper, since
+    replicating it is the point of Tables 5 and 6. Pass True for the
+    Fama-French convention. Neither is "right" -- this is a definitional
+    choice the source paper leaves open, so it is exposed rather than
+    hard-coded, and the flag is recorded in the output so a panel can be
+    traced back to the definition that produced it.
+
+    A residual of roughly 5% remains after this adjustment and shows up in E/P
+    too, so it is common to both ratios rather than specific to book equity.
+    That is the firm-screen bundle -- the "three years of accounting data"
+    requirement, whether the numerator's firm set should match the market-equity
+    denominator's, aggregating-then-lagging versus lagging-then-aggregating for
+    non-December fiscal year ends, and 20+ years of Compustat restatement. Not
+    chased; see ISSUE2.md.
+
+    NULL HANDLING: TXDITC is coalesced to 0 if missing -- standard Fama-French
+    convention, since a missing value here usually means "not applicable" rather
+    than "unknown" (immaterial when `include_deferred_taxes` is False, since the
+    term is then dropped entirely). CEQ (common equity) is deliberately NOT
+    coalesced -- if it's genuinely missing, the firm's book equity is unknown,
+    not zero, and it should drop out of that year's sum rather than be
+    misrepresented. See aggregate_firm_level_to_fiscal_year for how a fiscal
+    year with too few non-missing CEQ values is handled.
 
     UNITS: Compustat dollar fields (ceq, txditc, pstk*, oibdp) are reported in
     $ millions; CRSP's crsp.msi.totval (used as the market-equity denominator
@@ -489,7 +532,7 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
             WHERE linktype IN ('LU','LC') AND linkprim IN ('P','C')
         )
         SELECT be.gvkey, be.datadate, be.fyear,
-               (be.ceq + be.txditc - be.pstk_any) AS book_equity,
+               (be.ceq {txditc_term} - be.pstk_any) AS book_equity,
                be.oibdp
         FROM be
         JOIN first_year fy ON be.gvkey = fy.gvkey
@@ -499,7 +542,13 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
             AND n.exchcd = 1
             AND be.datadate::date BETWEEN n.namedt::date AND n.nameendt::date
         WHERE (be.fyear - fy.first_fyear) >= %(min_years)s
-    """.format(end_clause="AND f.datadate <= %(end)s" if end else "")
+    """.format(
+        end_clause="AND f.datadate <= %(end)s" if end else "",
+        txditc_term="+ be.txditc" if include_deferred_taxes else "",
+    )
+    print(f"  [info] book equity = CEQ "
+          f"{'+ TXDITC ' if include_deferred_taxes else ''}- preferred stock "
+          f"({'Fama-French convention' if include_deferred_taxes else 'paper-matching; see docstring'})")
     params = {"start": start, "min_years": min_years_history}
     if end:
         params["end"] = end

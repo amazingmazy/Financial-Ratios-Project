@@ -134,43 +134,102 @@ just above the largest observed miss of 0.018. `skew` remains the only
 informational statistic. This recovered about two dozen of the paper's
 numbers that had been written off as uncheckable.
 
-## Known gaps: Tables 5 and 6 run high
+## Changelog: Tables 5 and 6 -- it was the book-equity formula
 
-All 54 remaining failures are B/M or E/P. Over 1963-2000:
+Tables 5 and 6 initially ran high: B/M averaged 58.69 over 1963-2000 against
+the paper's 53.13 (+10.5%) and E/P 21.03 against 20.02 (+5.0%). Tracked down
+to deferred taxes.
 
-| | paper | ours |
+We had been computing book equity the Fama-French way, `CEQ + TXDITC -
+preferred stock`. TXDITC -- deferred taxes and investment tax credit -- turns
+out to be 12.1% of our aggregate book equity, and dropping it closes almost
+the whole gap:
+
+| aggregate B/M, 1963-2000 mean | value | vs paper |
 |---|---|---|
-| B/M mean | 53.13 | 58.69 |
-| E/P mean | 20.02 | 21.03 |
-| corr(e,m), B/M | -0.890 | -0.783 |
+| paper | 53.13 | -- |
+| `CEQ + TXDITC - preferred` | 58.69 | +10.5% |
+| `CEQ - preferred` | 52.13 | -1.9% |
 
-**Not a timing or alignment problem.** Both ratios move in 99.9% of months
-and corr(e,m) stays strongly negative -- the near-zero signature that
-exposed the `totval` lag bug (ISSUE1.md, eighth round) is absent. The
-levels are simply high by ~10% (B/M) and ~5% (E/P), with persistence
-slightly low.
+Three things say this is the cause rather than a coincidence:
 
-Not the early-Compustat coverage ramp either, despite that being the
-obvious suspect from ISSUE1.md's seventh round: trimming the start year
-moves B/M's mean *further* from the paper (58.69 at 1963-06, 65.54 at
-1975), because our 1960s decade mean of 33.14 is pulling the average down,
-not up. The decade shape (1960s 33, 1970s 69, 1980s 77, 1990s 49) is
-economically sensible for aggregate NYSE book-to-market.
+1. **It cannot touch E/P.** That numerator is OIBDP, an income-statement flow
+   with no deferred-tax component -- which is exactly why E/P diverged only
+   about half as much as B/M. A cause acting on the firm set would have hit
+   both roughly equally; one acting on the book-equity formula hits only B/M.
+   The asymmetry was the clue.
+2. **The decade pattern fits.** The gap is widest in the 1970s-80s (decade
+   means 69 and 77, against 63 and 66 once TXDITC is removed), precisely when
+   accelerated depreciation and high inflation made deferred taxes largest.
+3. **The convention is genuinely unsettled.** The paper says only "the ratio
+   of book equity to market equity" and never gives a formula, and Ken
+   French's own site documents that the deferred-tax treatment changed after
+   FASB 109 -- so it is not stable even within the Fama-French lineage.
 
-**Decision: document rather than chase.** Per the instructor, we are to use
-the whole Compustat dataset, so a divergence from whatever firm screen
-Lewellen applied is expected rather than a defect -- the paper specifies
-neither the exact universe nor the book-equity formula, and states only
-that a firm needs three years of accounting data. A ~10% gap on an
-aggregate ratio built from an unspecified screen is a defensible
-replication difference, and the qualitative conclusions are unaffected.
+Exposed as `pull_compustat_be_and_earnings(include_deferred_taxes=...)` and
+`run_issue1.py --include-deferred-taxes`, defaulting to **False**, the variant
+that reproduces the paper. Neither setting is "right": this is a definitional
+choice the source paper leaves open, so it is a flag rather than a hard-coded
+constant, and the choice travels with whichever panel was built.
+
+### It fixes the level, not the persistence
+
+Worth being precise about what the adjustment does and does not buy, since the
+headline improvement in the mean oversells it:
+
+| B/M, 1963-2000 | paper | with TXDITC | without |
+|---|---|---|---|
+| mean | 53.13 | 58.63 | **52.08** |
+| s.d. | 18.28 | 21.00 | **17.77** |
+| skew | 0.39 | 0.31 | **0.38** |
+| rho1 | 0.990 | 0.986 | 0.984 |
+| log B/M rho1 | 0.995 | 0.989 | 0.986 |
+| log B/M rho24 | 0.923 | 0.817 | 0.746 |
+
+Level, dispersion and shape all improve markedly. Persistence gets slightly
+*worse*, which makes mechanical sense: deferred taxes accumulate gradually, so
+removing them strips a smooth component out of book equity and leaves the
+series noisier year to year.
+
+The gap in persistence is present under **both** definitions (rho1 of 0.989
+against 0.986, versus the paper's 0.995), so it is not caused by this choice --
+it belongs to the residual below. It deserves flagging anyway, because rho is
+the load-bearing statistic for this paper: `b_adj = b_ols - gamma*(rho_hat-1)`,
+so an error in rho propagates into every Table 5 estimate in a way an error in
+the level does not. Across the published-value assertions the net effect of the
+adjustment was +6 cells matching (53 xfail / 51 xpass before, 47 / 57 after);
+B/M now matches on 42% of its cells against E/P's 67%, and the difference is
+concentrated in the autocorrelation rows.
+
+### What was ruled out on the way
+
+- **CRSP/Compustat link duplication.** The leading suspect, and wrong: the
+  join returns 58,392 firm-year rows and 58,392 distinct `(gvkey, fyear)`
+  pairs. No double-counting from dual share classes.
+- **Timing or alignment.** Both ratios move in 99.9% of months and corr(e,m)
+  stays strongly negative -- the near-zero signature that exposed the `totval`
+  lag bug (ISSUE1.md, eighth round) is absent.
+- **The early-Compustat coverage ramp**, despite being the obvious suspect
+  from ISSUE1.md's seventh round. Trimming the start year moves B/M *further*
+  from the paper (58.69 at 1963-06, 65.54 at 1975), because our 1960s decade
+  mean is pulling the average down rather than up.
+
+### The residual
+
+About 5% remains after the adjustment, and it shows up in E/P too, so it is
+common to both ratios rather than specific to book equity. That is the
+firm-screen bundle: the "three years of accounting data" requirement the paper
+states but never operationalises, whether the numerator's Compustat-matched
+firm set should match the `totval` denominator's full CRSP NYSE universe
+(it does not, which biases our ratio *down* relative to a true aggregate),
+aggregating-then-lagging versus lagging-then-aggregating for the ~1/3 of firms
+with non-December fiscal year ends, and 20+ years of Compustat restatement
+since the paper's extract. Not chased -- per the instructor we use the whole
+Compustat dataset, so some divergence from Lewellen's screen is expected
+rather than a defect.
+
 The assignment requires Table 5 *or* 6, so Table 5 (B/M) is the designated
 deliverable and Table 6 is carried as a robustness check.
-
-If it is worth revisiting later, the candidates in order are: the
-three-years-of-history screen in `pull_compustat_be_and_earnings`, the
-preferred-stock preference order (pstkrv -> pstkl -> pstk), and whether the
-numerator's firm set matches the `totval` denominator's.
 
 ## Known gaps: legacy CRSP tables are frozen at 2024
 
