@@ -391,12 +391,34 @@ replication on SIZ and the extension on CIZ, state that both were run, and
 do not present a slope from one as comparable to a slope from the other at
 two decimal places.
 
-## Environment note
+## Environment
 
-`requirements.txt` pins neither `pandas` nor a working `wrds` floor. A
-fresh install today resolves `pandas` 3.0, which drops the raw DBAPI2
-support `wrds` relies on, so every `raw_sql` call fails with
-`'Connection' object has no attribute 'cursor'`; and a bare `wrds`
-resolves to 3.1.6 rather than the `>=3.2.0` the file asks for. Working
-combination is `pandas<3` with `wrds>=3.5`. `requests`, `streamlit` and
-`plotly` are imported by the code but missing from the file entirely.
+`conda env create -f environment.yml && conda activate financial-ratios`, or
+`pip install -r requirements.txt` directly. `environment.yml` installs
+`requirements.txt` rather than restating it, so conda and pip cannot resolve
+different versions of anything.
+
+**Correction to an earlier note here.** This section previously claimed that
+`requirements.txt` was broken -- that a fresh install resolved pandas 3.0 and
+every `raw_sql` call then failed with `'Connection' object has no attribute
+'cursor'`. That was wrong, and the error was ours rather than the file's. A
+clean `pip install -r requirements.txt` has always resolved pandas 2.2.3 with
+wrds 3.5.0, and the WRDS client works from it; verified by building an empty
+environment from the unmodified file, querying `crsp.msi`, and running the
+suite (216 passed). What actually happened is that packages were installed
+ad-hoc without the file, a bare `wrds` resolved to the 2023-era 3.1.6 -- which
+passes a raw DBAPI2 connection to `pandas.read_sql_query`, unsupported since
+pandas 3 -- and the resulting breakage was attributed to `requirements.txt`.
+
+The `wrds>=3.5` floor now in the file is still worth keeping, for exactly that
+reason: it is what stops a resolver from satisfying a newer pandas by reaching
+back to an ancient wrds. wrds 3.5 constrains pandas to `>=2.2,<2.3` itself, so
+pandas deliberately carries no separate pin -- pinning both invites a conflict
+without adding a guarantee.
+
+The file did have two real problems, both fixed: `streamlit` was absent, so the
+dashboard could not run and `test_dashboard.py` silently skipped; and roughly
+ten unused packages were carried along, the FastAPI stack among them, from the
+same unrelated template that left the `Makefile` and `Dockerfile` pointing at an
+`app/` directory this project has never had. After the rewrite the suite runs
+217 passed, 0 skipped from a clean environment.

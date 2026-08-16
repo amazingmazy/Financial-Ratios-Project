@@ -15,7 +15,7 @@ Last reviewed: after PR #7 (replication tests, CIZ pull, sample extension).
 |---|---|---|---|---|
 | 1 | Single LaTeX document: describes the replication, contains every table and chart the code produces, high-level discussion of successes, challenges and data sources. No code snippets. | 4 | `[ ]` | No `reports/`, no `.tex` anywhere. Much of the prose already exists in `ISSUE1.md` / `ISSUE2.md` and can be lifted. |
 | 2 | At least one Jupyter notebook touring the cleaned data and the analysis. Code snippets fine here. | 4 | `[ ]` | No notebooks in the repo, ever. `jupytext` is already a dependency. |
-| 3 | Replicate the assigned tables, with a chosen tolerance and unit tests asserting the numbers match within it. | 20 | `[~]` | Tables 1-3 reproduce with zero failures (Table 2 VWNY 1946-2000: OLS 0.978 s.e. 0.477 against published 0.917/0.476; rho~1 0.686 t=4.56 against 0.663/4.67). Tables 5/6 diverge ~10% (B/M) and ~5% (E/P) on levels -- documented, `xfail`ed, defensible under the whole-Compustat instruction, but not a full reproduction. 320 assertions in `tests/test_replication_vs_paper.py`; tolerances fixed before results were seen and justified per statistic in `src/paper_values.py`. |
+| 3 | Replicate the assigned tables, with a chosen tolerance and unit tests asserting the numbers match within it. | 20 | `[~]` | Tables 1-3 reproduce with zero failures (Table 2 VWNY 1946-2000: OLS 0.978 s.e. 0.477 against published 0.917/0.476; rho~1 0.686 t=4.56 against 0.663/4.67). Tables 5/6: the B/M gap was traced to deferred taxes in book equity and largely closed (mean 58.69 -> 52.08 against the paper's 53.13); the remaining ~5%, shared with E/P, is the firm-screen residual. `xfail`ed with reasons. 320 assertions in `tests/test_replication_vs_paper.py`; tolerances fixed before results were seen and justified per statistic in `src/paper_values.py`. |
 | 4 | Reproduce the same tables with updated numbers, through the most recent data. | 20 | `[x]` | `replicate_paper_tables.py --extended`, two windows, both CRSP schemas for robustness. Paper's conclusion survives to 2025; post-2000 the conditional test loses power exactly as the paper's own Table A.1 predicts. See ISSUE2.md. |
 | 5 | Our own summary-statistics table AND charts, typeset in LaTeX, with captions stating what the reader should take away. | 20 | `[ ]` | **Largest single gap.**  |
 
@@ -33,7 +33,7 @@ Last reviewed: after PR #7 (replication tests, CIZ pull, sample extension).
 | 13 | Repo and history free of secrets. | 4 | `[x]` | Verified. WRDS password resolves from `~/.pgpass` outside the repo; only `WRDS_USERNAME` is read from the environment. |
 | 14 | `.env` plus sensible `settings.py` defaults (data dir, keys, `START_DATE`, `END_DATE`), with the format documented in `.env.example`. | 4 | `[ ]` | Neither file exists. Dates are currently CLI arguments. |
 | 15 | No trace of `.env` in the commit history. | 4 | `[x]` | Verified across every branch. |
-| 16 | `requirements.txt` describing the packages needed to run the code. | 4 | `[~]` | **Present but broken.** `pandas` is unpinned, so a fresh install resolves 3.0, which drops the raw DBAPI2 support `wrds` needs -- every `raw_sql` call fails. A bare `wrds` also resolves to 3.1.6 rather than the `>=3.2.0` the file asks for. `requests`, `streamlit` and `plotly` are imported by the code but absent. Working set is `pandas<3` with `wrds>=3.5`. |
+| 16 | `requirements.txt` describing the packages needed to run the code. | 4 | `[x]` | Rewritten and verified from an empty environment: WRDS connects and queries, suite runs 217 passed / 0 skipped. Added `streamlit` (its absence was silently skipping `test_dashboard.py`) and dropped ~10 unused packages carried over from an unrelated FastAPI template. `wrds>=3.5` floor documented -- it is what stops a resolver satisfying a newer pandas with a 2023-era wrds that pandas 3 cannot drive. An earlier note here claimed the file was broken by a pandas 3 conflict; that was wrong, the file always resolved correctly, and the breakage came from installing packages ad-hoc without it. |
 | 17 | Repo and history free of secrets. *(the rubric lists this twice)* | 4 | `[x]` | As item 13. |
 | 20 | Every Python file has a top-level docstring describing what it does. | 4 | `[x]` | All modules. |
 | 21 | Functions have descriptive names and docstrings where appropriate. | 4 | `[x]` | |
@@ -50,21 +50,20 @@ Last reviewed: after PR #7 (replication tests, CIZ pull, sample extension).
 | # | Item | Pts | Status | Notes |
 |---|---|---|---|---|
 | 22 | Did I accomplish my assigned tasks and contribute a substantial part of the code, as evidenced by the commit history? | 50 | `[~]` |  |
-| 23 | Oral defense: defend the analysis and design choices, and demonstrate running and modifying the project -- conda env, `doit` end-to-end, a live edit, SSH where relevant. | 20 | `[~]` |  |
+| 23 | Oral defense: defend the analysis and design choices, and demonstrate running and modifying the project -- conda env, `doit` end-to-end, a live edit, SSH where relevant. | 20 | `[~]` | `environment.yml` now exists and is verified, so the conda half of the demo is available. `doit` still missing (item 8). |
 
 ## Where the points are
 
 | | Pts |
 |---|---|
-| Secured | 40 |
+| Secured | 44 |
 | Largely done (items 3, 4) | roughly 37 of 40 |
 | Not started | 44 |
-| Cheap and broken (item 16) | 4 |
 | Individual (items 22, 23) | 70 |
 
 ## Suggested order
 
-1. **`requirements.txt` + `environment.yml`** (item 16, and half of 23). Fifteen minutes; without it a grader following the README cannot run the project at all.
+1. ~~`requirements.txt` + `environment.yml`~~ -- done and verified from a clean environment.
 2. **cruft scaffold** (item 10). Worth 4 directly, but it is also the container for `dodo.py`, `settings.py`, `.env.example` and `reports/` -- another 16 behind it.
 3. **`dodo.py`** (item 8, and the other half of 23).
 4. **Own table and 2-3 figures** (item 5). Largest single item.
