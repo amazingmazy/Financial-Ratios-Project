@@ -9,10 +9,10 @@ not to proceed to Issue 2 until Table 1 matches.
 
 Usage:
     # Real run, with WRDS/CRSP (and optionally Compustat) access:
-    python run_issue1.py --source wrds --start 1926-01-01 --out data/master_panel.csv
+    python run_issue1.py --source wrds --out _data/master_panel.csv
 
     # Offline dry run (synthetic data; validates the pipeline, not real numbers):
-    python run_issue1.py --source synthetic --out data/master_panel_demo.csv
+    python run_issue1.py --source synthetic --out _data/master_panel_demo.csv
 """
 
 from __future__ import annotations
@@ -25,6 +25,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from construct_panel import assemble_master_panel
 from qa_table1 import qa_gate
+from settings import config
+
+# Defaults come from settings.py (which reads .env, then falls back to its own
+# defaults); CLI arguments still override them. One place to change a path or a
+# date, and it is the same place the rest of the project reads from.
+DATA_DIR = config("DATA_DIR")
+START_DATE = config("START_DATE").strftime("%Y-%m-%d")
 
 
 def run_wrds(start: str, end: str | None, compustat: bool, index_source: str = "exchcd_filtered",
@@ -138,7 +145,7 @@ def main():
                          "SIZ tables stop -- they return a short panel rather than an error. 'ciz' also "
                          "sources the risk-free rate from the Ken French library, since crsp.mcti is "
                          "frozen at the same date.")
-    p.add_argument("--start", default="1946-01-01")
+    p.add_argument("--start", default=START_DATE)
     p.add_argument("--end", default=None)
     p.add_argument("--n-months", type=int, default=660, help="only used with --source synthetic")
     p.add_argument("--include-deferred-taxes", action="store_true",
@@ -150,7 +157,7 @@ def main():
                          "wrds_pull.pull_compustat_be_and_earnings.")
     p.add_argument("--no-compustat", action="store_true",
                     help="skip Compustat pull even in --source wrds mode (e.g. if you only have CRSP access)")
-    p.add_argument("--out", default="data/master_panel.csv")
+    p.add_argument("--out", default=str(DATA_DIR / "master_panel.csv"))
     p.add_argument("--debug-out", default=None,
                     help="if set, also write a version of the panel with diagnostic columns "
                          "(totval, matched_fye, book_equity_sum_used, oibdp_sum_used) to this "

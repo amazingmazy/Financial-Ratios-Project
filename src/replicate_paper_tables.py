@@ -18,8 +18,8 @@ whose data characteristics are documented in docs/ISSUE1.md (not excluded,
 just noted).
 
 Usage:
-    python src/replicate_paper_tables.py data/master_panel.csv
-    python src/replicate_paper_tables.py data/master_panel.csv --n-sims 8000
+    python src/replicate_paper_tables.py _data/master_panel.csv
+    python src/replicate_paper_tables.py _data/master_panel.csv --n-sims 8000
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
+from settings import config
 from estimators import run_all
 
 pd.set_option("display.float_format", lambda x: f"{x:0.4f}")
@@ -169,9 +170,10 @@ def run_extended(df: pd.DataFrame, n_sims: int) -> list[pd.DataFrame]:
 
 def main():
     p = argparse.ArgumentParser(description="Issue 2: core replication (Tables 2, 3, 4, 5)")
-    p.add_argument("panel_csv", help="path to the QA-gated master panel from Issue 1 (e.g. data/master_panel.csv)")
-    p.add_argument("--n-sims", type=int, default=8000, help="Monte Carlo draws for the Stambaugh correction")
-    p.add_argument("--out-dir", default="output")
+    p.add_argument("panel_csv", help="path to the QA-gated master panel from Issue 1 (e.g. _data/master_panel.csv)")
+    p.add_argument("--n-sims", type=int, default=config("N_SIMS"),
+                    help="Monte Carlo draws for the Stambaugh correction")
+    p.add_argument("--out-dir", default=str(config("OUTPUT_DIR")))
     p.add_argument("--extended", action="store_true",
                     help="also run the Issue 3 extension windows (1946-present and "
                          "2001-present), with the end date read from the panel")

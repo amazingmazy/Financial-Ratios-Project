@@ -27,7 +27,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-DEFAULT_PANEL = REPO_ROOT / "data" / "master_panel.csv"
+from settings import config  # noqa: E402  (needs the sys.path insert above)
+
+DEFAULT_PANEL = config("DATA_DIR") / "master_panel.csv"
 
 
 def pytest_configure(config):

@@ -40,6 +40,14 @@ jupytext
 doit                   # dodo.py, end-to-end build
 python-decouple>=3.8   # settings.py / .env handling
 
+# --- cookiecutter_chartbook scaffold ---------------------------------------
+# The project is scaffolded from https://github.com/backofficedev/cookiecutter_chartbook
+# (see .cruft.json). cruft keeps the link live -- `cruft check` reports whether
+# the upstream template has moved on; chartbook builds the docs site from
+# chartbook.toml via `doit build_chartbook_site`.
+cruft
+chartbook
+
 # --- testing ---------------------------------------------------------------
 pytest
 
