@@ -5,7 +5,7 @@ End-to-end build for the Lewellen (2004) replication, as a PyDoit pipeline.
 
     doit list          # what can be built
     doit               # build the default chain
-    doit panel_siz     # one taSTART_DATE = config("START_DATE").strftime("%Y-%m-%d")sk, plus whatever it depends on
+    doit panel_siz     # one task, plus whatever it depends on
     doit clean         # remove generated artefacts
     doit forget        # re-run next time even if targets look current
 
@@ -51,9 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from settings import config  # noqa: E402
-
 os.environ["WRDS_USERNAME"] = config("WRDS_USERNAME")
-
 BASE_DIR = config("BASE_DIR")
 DATA_DIR = config("DATA_DIR")
 OUTPUT_DIR = config("OUTPUT_DIR")
@@ -254,6 +252,24 @@ def task_generated_tables():
     }
 
 
+def task_exhibits():
+    """Build our own summary table and figure (rubric item 5).
+
+    Runs on the CIZ panel specifically, not SIZ -- the whole point is to look
+    at log(DY)'s persistence past the paper's 2000 cutoff, and SIZ does not
+    reach past 2024. Depends on estimators.py and dashboard_data.py, since
+    own_analysis.py calls fit_ar1 and power_threshold from them rather than
+    duplicating that logic.
+    """
+    script = SRC / "analysis.py"
+    return {
+        "actions": [f'"{PY}" "{script}" "{PANEL_CIZ}"'],
+        "file_dep": [script, PANEL_CIZ, SRC / "estimators.py", SRC / "dashboard_data.py"],
+        "targets": [OUTPUT_DIR / "own_summary_table.tex", OUTPUT_DIR / "own_rho_evolution.png"],
+        "clean": True,
+    }
+
+
 def task_compile_latex_docs():
     """Compile the write-up to PDF with latexmk (xelatex).
 
@@ -276,8 +292,13 @@ def task_compile_latex_docs():
             f'latexmk -xelatex -halt-on-error -cd "{tex}"',
             f'latexmk -xelatex -halt-on-error -c -cd "{tex}"',  # clean aux files
         ],
-        "file_dep": [tex, OUTPUT_DIR / "pandas_to_latex_simple_table1.tex"],
-        "task_dep": ["generated_tables"],
+        "file_dep": [
+            tex,
+            OUTPUT_DIR / "pandas_to_latex_simple_table1.tex",
+            OUTPUT_DIR / "own_summary_table.tex",
+            OUTPUT_DIR / "own_rho_evolution.png",
+        ],
+        "task_dep": ["generated_tables", "exhibits"],
         "targets": [REPORTS / "replication_report.pdf"],
         "clean": True,
     }
