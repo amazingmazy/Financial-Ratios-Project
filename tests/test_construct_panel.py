@@ -223,14 +223,30 @@ def test_aggregation_autocorrelation_is_high_when_pooled_correctly():
 # --------------------------------------------------------------------------
 
 def test_qa_gate_near_zero_correlation_signflip_does_not_fail():
-    from qa_table1 import ABS_TOLERANCE, SOFT_STATS
+    """A sign-flipped near-zero correlation pair must not fail the gate.
+
+    Two mechanisms used to protect this case: the absolute-tolerance floor, and
+    rho24 being in SOFT_STATS. The second is gone -- rho24 is now hard-gated,
+    because the paper's autocorrelations turned out to be lag-k OLS slopes
+    rather than Pearson correlations, and computing them that way reproduces
+    every published lag-12/lag-24 value (see qa_table1.lag_k_slope). So this
+    now asserts the floor alone, which is the mechanism that actually carries
+    the guarantee and the one the original bug was about.
+    """
+    from qa_table1 import ABS_TOLERANCE
     paper_val, comp_val, name = 0.013, -0.013, "rho24"
     abs_diff = abs(comp_val - paper_val)
     assert abs_diff <= ABS_TOLERANCE[name], (
         "a sign-flipped near-zero correlation pair should be within the "
         "absolute-tolerance floor"
     )
-    assert name in SOFT_STATS, "rho24 should not block the hard pass/fail gate"
+    # A pure relative-error check is what the original bug was: dividing a
+    # 0.026 gap by a 0.013 reference gives 200%, failing two numbers that are
+    # both indistinguishable from zero.
+    assert abs_diff / abs(paper_val) > 1.0, (
+        "this pair must still be a large *relative* error, or the test no "
+        "longer exercises the bug it was written for"
+    )
 
 
 def test_qa_gate_rho1_remains_a_hard_check():

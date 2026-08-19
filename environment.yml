@@ -1,0 +1,39 @@
+# Conda environment for the Lewellen (2004) replication.
+#
+#   conda env create -f environment.yml
+#   conda activate financial-ratios
+#
+# To update after requirements.txt changes:
+#
+#   conda env update -f environment.yml --prune
+#
+# ---------------------------------------------------------------------------
+# Why this file installs requirements.txt rather than listing packages itself
+# ---------------------------------------------------------------------------
+# Two hand-maintained dependency lists drift, and they drift silently: the pip
+# path and the conda path end up resolving different versions, and a bug
+# reproduces for one person and not the other. Here conda provides only the
+# interpreter, and pip installs the single authoritative list. There is exactly
+# one place to add a dependency.
+#
+# It also keeps the wrds/pandas pairing intact. wrds 3.5 constrains pandas to
+# >=2.2,<2.3 (see the note in requirements.txt); letting conda resolve pandas
+# independently would be free to pick a version wrds cannot use, and the
+# failure surfaces only on the first WRDS query rather than at install time.
+#
+# Python 3.12 rather than 3.13: pyproject.toml currently declares
+# requires-python >=3.13, but the pinned pandas 2.2.3 has no wheels for 3.13 on
+# Windows, so an environment built at 3.13 has to compile it from source and
+# usually fails. 3.12 is the highest version the dependency set actually
+# supports today.
+
+name: financial-ratios
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -r requirements.txt

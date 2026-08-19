@@ -41,6 +41,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from estimators import fit_ar1, fit_predictive_ols, conditional_rho_test, stambaugh_correction
+from settings import config
 from dashboard_data import (
     PRESET_WINDOWS, PREDICTOR_LABELS, RETURN_LABELS, RAW_LEVEL_COL,
     load_panel, filter_window, build_x_r, power_curve_grid,
@@ -63,7 +64,9 @@ def _stambaugh_cached(r: np.ndarray, x: np.ndarray, n_sims: int, seed: int = 0):
 
 st.title("Lewellen (2004) — interactive educational dashboard")
 
-panel_path = st.sidebar.text_input("Master panel CSV path", value="data/master_panel.csv")
+panel_path = st.sidebar.text_input(
+    "Master panel CSV path", value=str(config("DATA_DIR") / "master_panel.csv")
+)
 try:
     df = _load(panel_path)
 except FileNotFoundError:

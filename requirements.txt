@@ -1,40 +1,67 @@
-# Dependencies for this project. Install with:
-# pip install -r requirements.txt
-chartbook
-doit
-finm==0.1.3
-ipython
+# Dependencies for this project.
+#
+#   pip install -r requirements.txt
+#
+# or, for a conda environment, see environment.yml -- which installs this same
+# file rather than duplicating the list, so the two cannot drift apart.
+#
+# ---------------------------------------------------------------------------
+# A note on the wrds floor, because it is load-bearing
+# ---------------------------------------------------------------------------
+# `wrds>=3.5` is not cosmetic. Asking for a bare `wrds` lets a resolver satisfy
+# a newer pandas by reaching back to wrds 3.1.6 (2023), which passes a raw
+# DBAPI2 connection to pandas.read_sql_query. pandas 3 dropped support for
+# that, so every raw_sql call fails with
+#
+#     'Connection' object has no attribute 'cursor'
+#
+# and the whole data pipeline dies at the first query. wrds 3.5 uses a
+# SQLAlchemy 2.x engine instead and constrains pandas to >=2.2,<2.3 itself, so
+# declaring the floor here is what keeps the pair consistent. Do not "fix" a
+# pandas complaint by loosening this line.
+
+# --- core runtime ----------------------------------------------------------
+numpy
+pandas                 # version is set by wrds (>=2.2,<2.3); do not pin separately
+scipy>=1.12.0
+requests>=2.32.3
+wrds>=3.5              # see note above
+
+# --- dashboard (src/dashboard.py) ------------------------------------------
+streamlit
+plotly
+
+# --- figures and the notebook tour -----------------------------------------
+matplotlib
 jupyter
 jupytext
-matplotlib
-polars>=1.9.0
-python-dateutil
-python-decouple>=3.8
-scipy>=1.12.0
 
-# Testing
-pytest==8.3.3
+# --- pipeline automation and configuration ---------------------------------
+doit                   # dodo.py, end-to-end build
+python-decouple>=3.8   # settings.py / .env handling
 
-# Linting / Formatting
-pylint
-flake8
+# --- cookiecutter_chartbook scaffold ---------------------------------------
+# The project is scaffolded from https://github.com/backofficedev/cookiecutter_chartbook
+# (see .cruft.json). cruft keeps the link live -- `cruft check` reports whether
+# the upstream template has moved on; chartbook builds the docs site from
+# chartbook.toml via `doit build_chartbook_site`.
+cruft
+chartbook
+
+# --- testing ---------------------------------------------------------------
+pytest
+
+# --- linting / formatting --------------------------------------------------
 black
+flake8
+pylint
 
-# Core API framework
-fastapi==0.123.10
-uvicorn==0.40.0
-python-multipart==0.0.22
-pydantic==2.12.3
-pydantic-settings==2.12.0
-
-# ML/Data libraries
-numpy
-pandas
-scikit-learn==1.6.1
-joblib==1.5.3
-
-seaborn>=0.13.2
-wrds>=3.2.0
-
-# Utilities
-requests>=2.32.3
+# ---------------------------------------------------------------------------
+# Deliberately removed: fastapi, uvicorn, python-multipart, pydantic,
+# pydantic-settings, scikit-learn, joblib, polars, seaborn, finm, chartbook,
+# ipython, python-dateutil. None is imported anywhere in src/, tests/ or
+# run_issue1.py -- the first seven arrived with an unrelated FastAPI
+# stock-prediction template (the same one that left the Makefile and Dockerfile
+# pointing at an `app/` directory this project has never had), and the rest
+# were either unused or already pulled in transitively by pandas.
+# ---------------------------------------------------------------------------

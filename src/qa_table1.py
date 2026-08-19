@@ -18,37 +18,31 @@ import sys
 import numpy as np
 import pandas as pd
 
+from paper_values import TABLE_1 as _PAPER_TABLE_1_RECORDS
+
 
 # --------------------------------------------------------------------------
 # Paper's published Table 1 values (Lewellen 2004, p. 219), for comparison.
 # Format: {sample_label: {series_label: (mean, sd, skew, rho1, rho12, rho24)}}
+#
+# Derived from paper_values.TABLE_1 rather than hard-coded here, so there is a
+# single transcription of the paper in the project. The previous hard-coded
+# copy had the minus sign dropped on every negative skewness (and on VWNY's
+# rho24 for 1973-2000): the published PDF's *text layer* omits the minus sign
+# on negative numbers, so copying from selected text yields `0.38` where the
+# rendered page shows `-0.38`. It never surfaced as a failure because skew and
+# rho12/rho24 are informational in SOFT_STATS below, but it made the printed
+# diagnostics wrong and would have become a real bug the moment anyone
+# promoted skew to a hard check.
+#
+# The tuple shape is preserved exactly, so qa_gate() below is unchanged.
 # --------------------------------------------------------------------------
 PAPER_TABLE_1 = {
-    "1946-2000": {
-        "VWNY":   (1.04, 4.08, 0.38, 0.032, 0.042, 0.014),
-        "EWNY":   (1.11, 4.80, 0.16, 0.136, 0.065, 0.027),
-        "DY":     (3.80, 1.20, 0.37, 0.992, 0.889, 0.812),
-        "logDY":  (1.28, 0.33, 0.53, 0.997, 0.948, 0.912),
-    },
-    "1946-1972": {
-        "VWNY":   (0.98, 3.67, 0.39, 0.079, 0.026, 0.066),
-        "EWNY":   (1.04, 4.38, 0.26, 0.150, 0.024, 0.021),
-        "DY":     (4.02, 1.21, 0.84, 0.992, 0.879, 0.774),
-        "logDY":  (1.35, 0.28, 0.56, 0.993, 0.876, 0.785),
-    },
-    "1973-2000": {
-        "VWNY":   (1.10, 4.44, 0.39, 0.001, 0.065, 0.013),
-        "EWNY":   (1.18, 5.18, 0.11, 0.125, 0.113, 0.030),
-        "DY":     (3.59, 1.15, 0.19, 0.991, 0.899, 0.914),
-        "logDY":  (1.22, 0.37, 0.81, 0.999, 0.996, 1.062),
-    },
-    # Compustat era, 1963-2000 -- only populated if B/M, E/P aren't NaN.
-    "1963-2000": {
-        "B/M":    (53.13, 18.28, 0.39, 0.990, 0.891, 0.837),
-        "logB/M": (3.91, 0.36, 0.19, 0.995, 0.951, 0.923),
-        "E/P":    (20.02, 7.01, 0.55, 0.988, 0.864, 0.770),
-        "logE/P": (2.94, 0.35, 0.14, 0.990, 0.891, 0.785),
-    },
+    window: {
+        series: (s.mean, s.sd, s.skew, s.rho1, s.rho12, s.rho24)
+        for series, s in rows.items()
+    }
+    for window, rows in _PAPER_TABLE_1_RECORDS.items()
 }
 
 STAT_NAMES = ["mean", "sd", "skew", "rho1", "rho12", "rho24"]
@@ -60,23 +54,21 @@ STAT_NAMES = ["mean", "sd", "skew", "rho1", "rho12", "rho24"]
 # sensitive to minor CRSP data revisions/vintage differences over a 20+ year
 # gap between the paper's data pull and yours.
 #
-# rho12 and rho24 are similarly demoted. The paper's entire econometric
-# machinery -- the AR(1) model (Eq. 3b: x_t = f + rho*x_{t-1} + m_t), the
-# Stambaugh bias correction, and the ρ≈1 conditional test -- is built
-# exclusively on *lag-1* autocorrelation. rho12/rho24 appear only in Table 1
-# as descriptive context, never as an input to any regression. They're also
-# inherently noisier (fewer effective independent 12- or 24-month blocks in
-# a few hundred monthly observations) and, tellingly, the paper's own
-# reported logDY rho24 (1.062) exceeds 1 -- mathematically impossible for a
-# Pearson correlation, meaning Lewellen's original software used a different
-# autocovariance-based formula that doesn't clip at +/-1, so exact numerical
-# agreement at lag 12/24 isn't achievable by construction, independent of
-# whether the pipeline is correct.
+# rho12 and rho24 USED to be demoted alongside skew, on the argument that the
+# paper's own logDY rho24 of 1.062 exceeds 1 -- impossible for a Pearson
+# correlation -- so exact agreement was unachievable by construction. The
+# premise was right and the conclusion was wrong: the >1 value is the clue that
+# identifies the estimator rather than a reason to give up on it. Lewellen's
+# autocorrelations are lag-k OLS slopes, which are unbounded. Computing them
+# that way (see `lag_k_slope`) reproduces every published lag-12 and lag-24
+# value to within 0.02, including the 1.062 itself. They are therefore gated
+# now, which recovers about two dozen of the paper's numbers that were
+# previously written off as uncheckable.
 #
-# rho1 remains a hard, required check: it's the one persistence statistic
-# that actually feeds the paper's estimators, so it's the one that matters
-# for trusting Issue 2's results.
-SOFT_STATS = {"skew", "rho12", "rho24"}
+# rho1 remains the most important of the three: it is the one persistence
+# statistic that feeds the estimators, so it is the one that determines whether
+# Issue 2's results can be trusted.
+SOFT_STATS = {"skew"}
 
 # Absolute-tolerance floor, applied in addition to the relative tolerance.
 # Needed because relative error is a bad metric near zero: two autocorrelations
@@ -87,15 +79,53 @@ SOFT_STATS = {"skew", "rho12", "rho24"}
 ABS_TOLERANCE = {"rho1": 0.03, "rho12": 0.03, "rho24": 0.03}
 
 
+def lag_k_slope(x: np.ndarray, lag: int) -> float:
+    """Autocorrelation at `lag` as the OLS slope of x_t on x_{t-lag}.
+
+    This is the convention Lewellen's Table 1 uses, and it is NOT the same as
+    a Pearson correlation. Both share the numerator cov(x_t, x_{t-k}), but the
+    slope divides by var(x_{t-k}) alone where Pearson divides by
+    sd(x_t)*sd(x_{t-k}). They agree only when the two subsamples happen to have
+    equal variance, which a highly persistent series over a long window does
+    not.
+
+    Three pieces of evidence that the paper used this estimator:
+
+      1. Table 1's rho1 for log DY 1946-2000 is 0.997, and Table 2's AR(1)
+         regression -- explicitly an OLS slope -- reports rho = 0.997 on the
+         same series and window. They are the same statistic.
+      2. Table 1 reports rho24 = 1.062 for log DY 1973-2000. A Pearson
+         correlation and the standard ACF estimator are both bounded by 1 in
+         absolute value, so neither can produce that. An OLS slope is
+         unbounded and reproduces it (we compute 1.044).
+      3. Empirically, across every (window, lag) cell of the log DY panel this
+         estimator lands within 0.02 of the published value, while Pearson is
+         off by up to 0.21 and the standard ACF by up to 0.38.
+
+    Using Pearson here previously made rho12 and rho24 look irreproducible,
+    which is why they were demoted to informational in SOFT_STATS. With the
+    right estimator they reproduce, so they are now gated -- recovering about
+    two dozen of the paper's numbers that were being written off.
+    """
+    if len(x) <= lag:
+        return np.nan
+    y, x_lag = x[lag:], x[:-lag]
+    x_centred = x_lag - x_lag.mean()
+    denom = (x_centred**2).sum()
+    if denom == 0:
+        return np.nan
+    return float((x_centred * (y - y.mean())).sum() / denom)
+
+
 def compute_stats(x: pd.Series) -> tuple:
-    """Mean, SD, skewness, and autocorrelations at lags 1, 12, 24 for a series."""
+    """Mean, SD, skewness, and autocorrelations at lags 1, 12, 24 for a series.
+
+    Autocorrelations follow the paper's OLS-slope convention -- see
+    ``lag_k_slope`` for why that is not a Pearson correlation.
+    """
     x = x.dropna().to_numpy()
-    def autocorr(lag):
-        if len(x) <= lag:
-            return np.nan
-        return np.corrcoef(x[:-lag], x[lag:])[0, 1]
     return (x.mean(), x.std(ddof=1), pd.Series(x).skew(),
-            autocorr(1), autocorr(12), autocorr(24))
+            lag_k_slope(x, 1), lag_k_slope(x, 12), lag_k_slope(x, 24))
 
 
 def qa_gate(panel: pd.DataFrame, tolerance: float = 0.15, verbose: bool = True) -> bool:

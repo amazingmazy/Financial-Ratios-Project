@@ -120,6 +120,88 @@ def pull_crsp_nyse_index_exchcd_filtered(conn, start: str = "1926-01-01",
     return aggregate_security_level_to_monthly_index(sec)
 
 
+def pull_crsp_nyse_index_ciz(conn, start: str = "1926-01-01",
+                              end: str | None = None) -> pd.DataFrame:
+    """
+    CIZ-schema equivalent of `pull_crsp_nyse_index_exchcd_filtered`.
+
+    CRSP's Flat File Format 2.0 ("CIZ") replaced the legacy "SIZ" schema in
+    January 2025, and the legacy tables stopped being updated: as of this
+    writing `crsp.msf` and `crsp.msi` end at 2024-12-31 while `crsp.msf_v2`
+    runs to 2025-12-31. The replication window (1946-2000) sits entirely
+    inside the legacy range, so this function exists for Issue 3 -- extending
+    the sample to the present -- rather than to change the replication. Note
+    that the legacy path fails *silently*: it returns a short panel rather
+    than an error, so an extension built on it would quietly stop a year early.
+
+    Two simplifications relative to the SIZ path:
+
+      - No join. `crsp.msf_v2` carries the security descriptors (exchange,
+        share type, issuer type) inline, so `crsp.msenames` and its
+        namedt/nameendt date-range join are not needed.
+      - Delisting returns are already incorporated into `mthret`, so there is
+        no separate delisting file to merge.
+
+    Filter mapping from the SIZ version:
+
+        exchcd = 1                ->  primaryexch = 'N'
+        shrcd in (10, 11)         ->  securitytype = 'EQTY'
+                                      AND securitysubtype = 'COM'
+                                      AND sharetype = 'NS'
+                                      AND usincflg = 'Y'
+                                      AND issuertype in ('ACOR', 'CORP')
+        (n/a)                     ->  conditionaltype = 'RW'      (regular way)
+        (n/a)                     ->  tradingstatusflg = 'A'      (active)
+
+    The last two have no SIZ analogue and exclude securities that are halted,
+    suspended, or settling on non-standard terms.
+
+    Returns the same column set as the SIZ path (permno/date/ret/retx/prc/
+    shrout, renamed from the CIZ names) and hands off to the same
+    `aggregate_security_level_to_monthly_index`, so the aggregation logic --
+    and the `totval` fix that logic encodes -- is shared rather than
+    duplicated. `crsp.msf_v2` also publishes `mthcap` directly, which would
+    avoid recomputing abs(prc)*shrout; we deliberately do not use it, so that
+    both schemas produce market cap by exactly the same arithmetic and any
+    difference between the two pulls is attributable to the source data
+    rather than to two different cap definitions.
+
+    One consequence worth carrying into the write-up: CIZ `mthret` compounds
+    daily returns with dividends reinvested on the ex-date, whereas legacy
+    `ret` was a month-to-month holding-period return reinvested at month end.
+    Because the dividend flow is reconstructed as
+    (vwretd - vwretx) * totval_{t-1}, that convention change propagates into
+    DY, so the replication and the extension do not sit on identical footing.
+    """
+    _require_conn(conn)
+    print(f"  [wrds_pull.py version: {WRDS_PULL_VERSION}]")
+    query = """
+        SELECT permno,
+               mthcaldt AS date,
+               mthret   AS ret,
+               mthretx  AS retx,
+               mthprc   AS prc,
+               shrout
+        FROM crsp.msf_v2
+        WHERE primaryexch = 'N'
+            AND securitytype = 'EQTY'
+            AND securitysubtype = 'COM'
+            AND sharetype = 'NS'
+            AND usincflg = 'Y'
+            AND issuertype IN ('ACOR', 'CORP')
+            AND conditionaltype = 'RW'
+            AND tradingstatusflg = 'A'
+            AND mthcaldt >= %(start)s
+            {end_clause}
+    """.format(end_clause="AND mthcaldt <= %(end)s" if end else "")
+    params = {"start": start}
+    if end:
+        params["end"] = end
+    sec = conn.raw_sql(query, params=params, date_cols=["date"])
+    sec["date"] = pd.to_datetime(sec["date"])
+    return aggregate_security_level_to_monthly_index(sec)
+
+
 def aggregate_security_level_to_monthly_index(sec: pd.DataFrame) -> pd.DataFrame:
     """
     Pure aggregation step, factored out of pull_crsp_nyse_index_exchcd_filtered
@@ -193,6 +275,45 @@ def pull_crsp_riskfree(conn, start: str = "1926-01-01", end: str | None = None) 
     df["date"] = pd.to_datetime(df["date"]).values.astype("datetime64[M]")
     df["rf"] = df["rf"] * 100  # CRSP stores as a decimal fraction; match percent convention
     return df.set_index("date").sort_index()
+
+
+def pull_riskfree_french(start: str = "1926-01-01",
+                          end: str | None = None) -> pd.DataFrame:
+    """
+    One-month T-bill return from the Ken French Data Library, as a current
+    substitute for `crsp.mcti` (which is frozen at 2024-12-31 -- see
+    `pull_crsp_nyse_index_ciz`). Same output contract as
+    `pull_crsp_riskfree`: indexed by month, single column `rf`, in percent.
+    Takes no `conn`; French's library is a public download.
+
+    Why French rather than a CIZ treasury table. CRSP's current treasury files
+    do not expose a drop-in replacement for `mcti.t30ret`. `crsp.tfz_mth_rf`
+    carries the right series (kytreasnox 2000001, "CRSP Risk Free Rates -
+    1-Month (Nominal)", 1925-2025) but publishes *yields to maturity*, not
+    realised monthly returns; checked against `t30ret` over 1946-2024 it
+    correlates only 0.977, which is a yield-versus-return difference rather
+    than noise. `crsp.tfz_mth_bp` does hold returns but they are the Fama bond
+    maturity portfolios, and it starts in 1952 -- too late for a 1946 sample.
+
+    French's RF is the one-month T-bill rate and is the standard definition of
+    "excess return" in this literature, including the papers Lewellen builds
+    on. Validated against `crsp.mcti.t30ret` over the 948 overlapping months
+    from 1946-01 to 2024-12: correlation 0.9958, mean absolute difference
+    0.012pp, maximum 0.175pp. Essentially all of the residual is French
+    publishing to two decimals (0.39 against CRSP's 0.3907), so these are the
+    same series at different printed precision rather than two measurements.
+
+    Only excess returns depend on this; nominal VWNY/EWNY are untouched.
+    """
+    from public_fallback import pull_french_factors_and_rf
+
+    fr = pull_french_factors_and_rf(start)
+    df = fr[["rf"]].copy()
+    df.index = pd.to_datetime(df.index).values.astype("datetime64[M]")
+    df.index.name = "date"
+    if end:
+        df = df.loc[df.index <= pd.to_datetime(end).to_numpy().astype("datetime64[M]")]
+    return df.sort_index()
 
 
 # --------------------------------------------------------------------------
@@ -296,21 +417,64 @@ def aggregate_firm_level_to_fiscal_year(firm_level: pd.DataFrame,
 
 def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
                                     end: str | None = None,
-                                    min_years_history: int = 3) -> pd.DataFrame:
+                                    min_years_history: int = 3,
+                                    include_deferred_taxes: bool = False) -> pd.DataFrame:
     """
     Construct aggregate NYSE book equity and operating income before depreciation,
     following the paper's construction (Section 3): book equity =
-    CEQ + TXDITC - preferred stock; operating earnings = OIBDP; both summed across
-    NYSE-listed firms (via the CRSP-Compustat merged linktable) with at least
-    `min_years_history` years of Compustat history.
+    CEQ [+ TXDITC] - preferred stock; operating earnings = OIBDP; both summed
+    across NYSE-listed firms (via the CRSP-Compustat merged linktable) with at
+    least `min_years_history` years of Compustat history.
 
-    NULL HANDLING: TXDITC (deferred taxes/investment credit) is coalesced to
-    0 if missing -- standard Fama-French convention, since a missing value
-    here usually means "not applicable" rather than "unknown." CEQ (common
-    equity) is deliberately NOT coalesced -- if it's genuinely missing, the
-    firm's book equity is unknown, not zero, and it should drop out of that
-    year's sum rather than be misrepresented. See aggregate_firm_level_to_fiscal_year
-    for how a fiscal year with too few non-missing CEQ values is handled.
+    DEFERRED TAXES (`include_deferred_taxes`, default False)
+    -------------------------------------------------------
+    Whether to add TXDITC -- deferred taxes and investment tax credit -- to book
+    equity. The Fama-French convention adds it; Lewellen appears not to. The
+    paper says only "the ratio of book equity to market equity" and never gives
+    a formula, so the text does not settle it. The data does:
+
+        aggregate B/M, 1963-2000 mean      value    vs paper
+        paper                              53.13      --
+        CEQ + TXDITC - preferred           58.69    +10.5%
+        CEQ - preferred                    52.13     -1.9%
+
+    TXDITC is 12.1% of our aggregate book equity, and dropping it closes almost
+    the entire gap. Three things corroborate that this is the cause rather than
+    a coincidence:
+
+      1. It cannot affect E/P, whose numerator is OIBDP -- an income-statement
+         flow with no deferred-tax component. That is exactly why E/P diverges
+         only about half as much as B/M (+5.0% against +10.5%).
+      2. The gap is widest in the 1970s-80s (decade means 69 and 77, against 63
+         and 66 once TXDITC is removed), precisely when accelerated depreciation
+         and high inflation made deferred taxes largest.
+      3. Ken French's own site documents that the deferred-tax treatment changed
+         after FASB 109, so the convention is not stable even within the
+         Fama-French lineage.
+
+    Default is False, i.e. the variant that reproduces the paper, since
+    replicating it is the point of Tables 5 and 6. Pass True for the
+    Fama-French convention. Neither is "right" -- this is a definitional
+    choice the source paper leaves open, so it is exposed rather than
+    hard-coded, and the flag is recorded in the output so a panel can be
+    traced back to the definition that produced it.
+
+    A residual of roughly 5% remains after this adjustment and shows up in E/P
+    too, so it is common to both ratios rather than specific to book equity.
+    That is the firm-screen bundle -- the "three years of accounting data"
+    requirement, whether the numerator's firm set should match the market-equity
+    denominator's, aggregating-then-lagging versus lagging-then-aggregating for
+    non-December fiscal year ends, and 20+ years of Compustat restatement. Not
+    chased; see ISSUE2.md.
+
+    NULL HANDLING: TXDITC is coalesced to 0 if missing -- standard Fama-French
+    convention, since a missing value here usually means "not applicable" rather
+    than "unknown" (immaterial when `include_deferred_taxes` is False, since the
+    term is then dropped entirely). CEQ (common equity) is deliberately NOT
+    coalesced -- if it's genuinely missing, the firm's book equity is unknown,
+    not zero, and it should drop out of that year's sum rather than be
+    misrepresented. See aggregate_firm_level_to_fiscal_year for how a fiscal
+    year with too few non-missing CEQ values is handled.
 
     UNITS: Compustat dollar fields (ceq, txditc, pstk*, oibdp) are reported in
     $ millions; CRSP's crsp.msi.totval (used as the market-equity denominator
@@ -368,7 +532,7 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
             WHERE linktype IN ('LU','LC') AND linkprim IN ('P','C')
         )
         SELECT be.gvkey, be.datadate, be.fyear,
-               (be.ceq + be.txditc - be.pstk_any) AS book_equity,
+               (be.ceq {txditc_term} - be.pstk_any) AS book_equity,
                be.oibdp
         FROM be
         JOIN first_year fy ON be.gvkey = fy.gvkey
@@ -378,7 +542,13 @@ def pull_compustat_be_and_earnings(conn, start: str = "1962-01-01",
             AND n.exchcd = 1
             AND be.datadate::date BETWEEN n.namedt::date AND n.nameendt::date
         WHERE (be.fyear - fy.first_fyear) >= %(min_years)s
-    """.format(end_clause="AND f.datadate <= %(end)s" if end else "")
+    """.format(
+        end_clause="AND f.datadate <= %(end)s" if end else "",
+        txditc_term="+ be.txditc" if include_deferred_taxes else "",
+    )
+    print(f"  [info] book equity = CEQ "
+          f"{'+ TXDITC ' if include_deferred_taxes else ''}- preferred stock "
+          f"({'Fama-French convention' if include_deferred_taxes else 'paper-matching; see docstring'})")
     params = {"start": start, "min_years": min_years_history}
     if end:
         params["end"] = end

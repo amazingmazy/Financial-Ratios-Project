@@ -277,7 +277,8 @@ def modified_bonferroni(p_conditional: float, p_stambaugh: float, D: float) -> f
 # Convenience wrapper: run all three estimators + joint test for one series
 # --------------------------------------------------------------------------
 
-def run_all(r: np.ndarray, x: np.ndarray, n_sims: int = 20000, rho_assumed: float = 0.9999):
+def run_all(r: np.ndarray, x: np.ndarray, n_sims: int = 20000, rho_assumed: float = 0.9999,
+            random_state: int = 0):
     """
     r : length T (returns r_1..r_T)
     x : length T+1 (predictor levels x_0..x_T), so x_lag = x[:-1] aligns with r.
@@ -287,9 +288,15 @@ def run_all(r: np.ndarray, x: np.ndarray, n_sims: int = 20000, rho_assumed: floa
     x_lag = x[:-1]
     ar1 = fit_ar1(x)
     ols = fit_predictive_ols(r, x_lag)
-    stam = stambaugh_correction(r, x, n_sims=n_sims)
+    # Thread the seed through explicitly. Both Monte Carlo steps previously
+    # took their own hard-coded defaults, so a caller that seeded its own run
+    # still got different numbers here -- which showed up as the driver and an
+    # ad-hoc script disagreeing on the Stambaugh slope by ~0.03 on identical
+    # data and n_sims. The offset keeps the two simulations independent rather
+    # than sharing a stream.
+    stam = stambaugh_correction(r, x, n_sims=n_sims, random_state=random_state)
     cond = conditional_rho_test(r, x, rho_assumed=rho_assumed)
-    D = unit_root_pvalue(x, n_sims=n_sims)
+    D = unit_root_pvalue(x, n_sims=n_sims, random_state=random_state + 1)
     joint_p = modified_bonferroni(cond.p, stam.p, D)
 
     # corr(e, m): the correlation between return shocks and predictor-innovation

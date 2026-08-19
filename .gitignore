@@ -220,3 +220,44 @@ __marimo__/
 # CSV / big file
 *.csv
 *.csv.gz
+# PyDoit state file (build cache; machine-local, never shared)
+.doit.db
+.doit.db.*
+
+# ---------------------------------------------------------------------------
+# cookiecutter_chartbook scaffold conventions
+# ---------------------------------------------------------------------------
+# Generated data and build outputs. CRSP and Compustat are licensed, so nothing
+# pulled may be committed -- _data/ is where every pull lands. Keep the
+# directories themselves so a fresh clone has somewhere to write.
+/_data/*
+!/_data/.gitkeep
+/_output/*
+!/_output/.gitkeep
+
+# Compiled LaTeX: the PDF is a build artefact, produced by `doit compile_latex_docs`.
+/reports/*.pdf
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.pdfsync
+*.out
+*.toc
+*.bbl
+*.blg
+
+# Chartbook / Sphinx build output
+/docs_src/apidocs
+/docs_src/site/*
+!/docs_src/site/.gitkeep
+_docs/
+docs/
+
+# Generated notebooks -- the jupytext .py script is the source of truth
+src/*.ipynb
+.ipynb_checkpoints/
+
+# .env may contain a WRDS username; the example is the only version tracked
+.env*
+!.env.example
