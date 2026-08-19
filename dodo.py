@@ -154,15 +154,27 @@ def task_panel_ciz():
     }
 
 
+# Names replicate_paper_tables.py writes one .tex fragment per, whenever run
+# with --extended (which _tables_task always does). Kept as an explicit list
+# rather than a glob so a silently-missing table fails the build instead of
+# being missed.
+REPLICATION_TABLE_NAMES = [
+    "table2", "table3a", "table3b", "table4a", "table4b",
+    "table5a", "table5b", "table6a", "table6b",
+    "table_ext_1946", "table_ext_2001",
+]
+
+
 def _tables_task(tag, panel, extra_args=""):
-    target = OUTPUT_DIR / f"issue2_tables_2_3_4_5_6_extended_{tag}.csv"
+    csv_target = OUTPUT_DIR / f"issue2_tables_2_3_4_5_6_extended_{tag}.csv"
+    tex_targets = [OUTPUT_DIR / f"{name}_{tag}.tex" for name in REPLICATION_TABLE_NAMES]
     return {
         "actions": [
             f'"{PY}" "{SRC / "replicate_paper_tables.py"}" "{panel}" '
             f"--extended --tag {tag} --n-sims {N_SIMS} {extra_args}".strip()
         ],
         "file_dep": TABLE_DEPS + [panel],
-        "targets": [target],
+        "targets": [csv_target] + tex_targets,
         "clean": True,
     }
 
@@ -287,6 +299,7 @@ def task_compile_latex_docs():
     this project does not use FRED for its exhibits.
     """
     tex = REPORTS / "replication_report.tex"
+    replication_tables = [OUTPUT_DIR / f"{name}_siz.tex" for name in REPLICATION_TABLE_NAMES]
     return {
         "actions": [
             f'latexmk -xelatex -halt-on-error -cd "{tex}"',
@@ -297,8 +310,8 @@ def task_compile_latex_docs():
             OUTPUT_DIR / "pandas_to_latex_simple_table1.tex",
             OUTPUT_DIR / "own_summary_table.tex",
             OUTPUT_DIR / "own_rho_evolution.png",
-        ],
-        "task_dep": ["generated_tables", "exhibits"],
+        ] + replication_tables,
+        "task_dep": ["generated_tables", "exhibits", "tables_siz"],
         "targets": [REPORTS / "replication_report.pdf"],
         "clean": True,
     }

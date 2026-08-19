@@ -161,17 +161,16 @@ predictive-regression estimators for VWNY match the paper closely:
 
 \begin{table}[H]
 \centering
-\begin{tabular}{lcc}
-\toprule
- & Paper & Ours \\
-\midrule
-OLS \(\hat b\) (s.e.) & 0.917 (0.476) & 0.978 (0.477) \\
-\(\rho \approx 1\) \(\hat b\) (s.e.) & 0.663 (0.142) & 0.686 (0.150) \\
-\(\rho \approx 1\) \(t\)-statistic & 4.67 & 4.56 \\
-\(\text{corr}(e,m)\) & \(-0.955\) & \(-0.949\) \\
-\bottomrule
-\end{tabular}
-\caption{Table 2 (VWNY, 1946--2000): published vs.\ replicated values.}
+\resizebox{\textwidth}{!}{%
+\input{\PathToOutput/table2_siz.tex}%
+}
+\caption{Table 2 (dividend yield predicts NYSE returns, 1946--2000, SIZ
+panel): OLS, Stambaugh (1999), and the \(\rho \approx 1\) conditional test,
+for nominal and excess VWNY/EWNY. Compare the \(\rho \approx 1\) row's
+\(\hat b = 0.686\) (\(t = 4.56\)) against the paper's published \(0.663\)
+(\(t = 4.67\)) for VWNY -- the OLS standard error (0.477 vs.\ the paper's
+0.476) is the single strongest indicator that the underlying dividend-flow
+and index construction is correct.}
 \label{tab:table2-compare}
 \end{table}
 

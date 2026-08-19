@@ -247,6 +247,13 @@ __marimo__/
 *.bbl
 *.blg
 
+#Output
+/output/*.png
+/output/*.tex
+
+#HTML
+*.html
+
 # Chartbook / Sphinx build output
 /docs_src/apidocs
 /docs_src/site/*
