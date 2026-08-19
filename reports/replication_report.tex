@@ -25,11 +25,13 @@
 \usepackage{amsmath}
 \usepackage{caption}
 \usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\usepackage{float}
+\usepackage{placeins}
 
 % Generated artefacts live in _output/, resolved relative to this file so the
 % build works from any working directory.
-\newcommand{\PathToOutput}{../_output}
-\graphicspath{{../_output/}}
+\newcommand{\PathToOutput}{../output}
+\graphicspath{{../output/}}
 
 \title{Predicting Returns with Financial Ratios:\\
        A Replication and Extension of Lewellen (2004)}
@@ -49,6 +51,7 @@ cutoff, and report where our numbers diverge and why.
 \end{abstract}
 
 \section{Introduction}
+\label{sec:introduction}
 
 Lewellen (2004) revisits a long-standing question in empirical finance:
 whether financial ratios like the dividend yield (\(DY\)), book-to-market
@@ -156,7 +159,7 @@ conditional test, together with the modified-Bonferroni joint test.
 1946--2000 sample, our AR(1) regression for \(\log(DY)\) and the three
 predictive-regression estimators for VWNY match the paper closely:
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \begin{tabular}{lcc}
 \toprule
@@ -169,6 +172,7 @@ OLS \(\hat b\) (s.e.) & 0.917 (0.476) & 0.978 (0.477) \\
 \bottomrule
 \end{tabular}
 \caption{Table 2 (VWNY, 1946--2000): published vs.\ replicated values.}
+\label{tab:table2-compare}
 \end{table}
 
 The OLS standard error matching to three decimal places is the strongest
@@ -238,22 +242,61 @@ convention differing from SIZ's month-end convention, but the qualitative
 conclusion is unchanged under either schema.
 
 \section{Our Own Exhibits}
-% TODO: this is where the summary table and figures go.
+\label{sec:exhibits}
 
-\subsection*{Placeholder: generated table}
-The table below is produced by \texttt{src/pandas\_to\_latex\_demo.py} and
-included with \verb|\input|. It exists at this stage only to prove that the
-build chain works end to end -- code writes a \texttt{.tex} fragment into
-\texttt{\_output/}, and this document pulls it in without anything being typed
-by hand. It will be replaced by our own summary statistics.
+Lewellen's entire argument depends on \(\log(DY)\) staying close enough to a
+unit root that the \(\rho \approx 1\) conditional test has power -- he
+states the requirement explicitly (Section 2.4): roughly 0.98 monthly
+autocorrelation for a 25-year sample, 0.99 for 50 years. His own sample
+ends in 2000, so the paper never asks whether that condition keeps holding.
+We do, using the extended CIZ panel built for
+Section~\ref{sec:extension}.
 
-\begin{table}[h]
+Table~\ref{tab:own-decades} reports mean, standard deviation, and lag-1
+autocorrelation (\(\hat\rho\)) of \(\log(DY)\), \(\log(B/M)\), and
+\(\log(E/P)\) by decade. \(\log(DY)\)'s persistence is not flat across the
+sample: persistence varies through the 2000s and before but declines by the 2010s, roughly
+matching the crossing shown in Figure~\ref{fig:own-rho}.
+
+\begin{table}[H]
 \centering
-\input{\PathToOutput/pandas_to_latex_simple_table1.tex}
-\caption{Placeholder, to be replaced. Demonstrates that numbers reach this
-document only by being generated.}
+\resizebox{\textwidth}{!}{%
+\input{\PathToOutput/own_summary_table.tex}%
+}
+\caption{Mean, standard deviation, and lag-1 autocorrelation of
+\(\log(DY)\), \(\log(B/M)\), and \(\log(E/P)\) by decade, 1946--2025 (CIZ
+panel). The takeaway is in the \(\hat\rho\) columns, not the levels: \(\log(DY)\)'s autocorrelation declines by the 2010s while \(\log(B/M)\)
+and \(\log(E/P)\) remain comparatively stable.}
+\label{tab:own-decades}
 \end{table}
 
+Figure~\ref{fig:own-rho} makes the same point continuously rather than by
+decade, plotting a rolling 25-year \(\hat\rho\) for \(\log(DY)\) against the
+paper's own stated power threshold for a window of that length. The rolling \(\hat\rho\) crosses below the threshold around 2014, roughly a
+decade after the post-2000 decline noted in Section~\ref{sec:extension} --
+the 2001--2025 subsample there already sits on the low side of the paper's
+power threshold on average, and this figure shows the specific point at
+which a trailing 25-year window stops qualifying at all
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{own_rho_evolution.png}
+\caption{Rolling 25-year autocorrelation of \(\log(DY)\), 1946--2025 (CIZ
+panel), against the paper's own power threshold for a window of that length
+(Section 2.4). \(\hat\rho\) crosses below the 0.980 threshold around 2014, after which
+a 25-year trailing window no longer supports the conditional test's power}
+\label{fig:own-rho}
+\end{figure}
+
+The point of both exhibits is the same: the paper's conditional test is
+powerful precisely because \(DY\) has historically been extremely
+persistent, and that is an empirical fact about the twentieth-century
+sample the paper studies, not a property guaranteed to hold indefinitely.
+Whether it continues to hold is exactly the question a reader deciding
+whether to trust the conditional test on \emph{current} data needs
+answered, and it is not one Lewellen's own tables can address.
+
+\FloatBarrier
 \section{Conclusion}
 \label{sec:conclusion}
 
@@ -271,5 +314,9 @@ extension to 2025 both confirms the paper's headline result over the full
 sample and illustrates its own stated limitation once dividend yield's
 autocorrelation falls below the paper's power threshold post-2000 -- a
 result the paper's Table A.1 predicts rather than one that undermines it.
+Our own exhibits (Section~\ref{sec:exhibits}) extend that point one step
+further, showing directly where and when that decline in persistence
+occurs, which is the piece of the picture the paper's own 1946--2000 sample
+cannot show.
 
 \end{document}
