@@ -5,7 +5,7 @@ End-to-end build for the Lewellen (2004) replication, as a PyDoit pipeline.
 
     doit list          # what can be built
     doit               # build the default chain
-    doit panel_siz     # one task, plus whatever it depends on
+    doit panel_siz     # one taSTART_DATE = config("START_DATE").strftime("%Y-%m-%d")sk, plus whatever it depends on
     doit clean         # remove generated artefacts
     doit forget        # re-run next time even if targets look current
 
@@ -52,6 +52,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from settings import config  # noqa: E402
 
+os.environ["WRDS_USERNAME"] = config("WRDS_USERNAME")
+
 BASE_DIR = config("BASE_DIR")
 DATA_DIR = config("DATA_DIR")
 OUTPUT_DIR = config("OUTPUT_DIR")
@@ -60,8 +62,8 @@ REPORTS = BASE_DIR / "reports"
 
 PY = sys.executable  # the interpreter running doit, so the env is never ambiguous
 
-START_DATE = config("START_DATE").strftime("%Y-%m-%d")
-SIZ_END_DATE = config("SIZ_END_DATE").strftime("%Y-%m-%d")
+START_DATE = config("START_DATE")
+SIZ_END_DATE = config("SIZ_END_DATE")
 N_SIMS = config("N_SIMS")
 
 PANEL_SIZ = DATA_DIR / "master_panel.csv"
