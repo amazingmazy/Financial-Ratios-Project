@@ -144,4 +144,3 @@ via `cruft`; `cruft check` reports the link is current.
 | **Stefano Ramponi** | data pipeline (Issue 1), estimator library and paper tables (Issue 2), interactive dashboard, LaTeX report |
 | **Anthony Mazy** | replication tests against published values, autocorrelation-estimator fix, CIZ schema port, sample extension, environment and build automation, walkthrough notebook |
 
-Both worked across the whole project; the split above is where each led.
