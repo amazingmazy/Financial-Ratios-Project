@@ -161,9 +161,7 @@ predictive-regression estimators for VWNY match the paper closely:
 
 \begin{table}[H]
 \centering
-\resizebox{\textwidth}{!}{%
-\input{\PathToOutput/table2_siz.tex}%
-}
+\input{\PathToOutput/table2_siz.tex}
 \caption{Table 2 (dividend yield predicts NYSE returns, 1946--2000, SIZ
 panel): OLS, Stambaugh (1999), and the \(\rho \approx 1\) conditional test,
 for nominal and excess VWNY/EWNY. Compare the \(\rho \approx 1\) row's
@@ -186,6 +184,58 @@ is gated tightly, since a 0.01 error in \(\hat\rho\) can move the
 bias-adjusted slope by roughly 0.9 and flip the sign of the paper's
 headline result).
 
+The subperiod split (Table 3) repeats the same regressions separately for
+1946--1972 and 1973--2000, the robustness check the paper uses to show the
+full-sample result is not carried by one unusual decade:
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table3a_siz.tex}
+\caption{Table 3a (dividend yield predicts NYSE returns, 1946--1972, SIZ
+panel). The paper finds strong predictability in this subperiod despite the
+shorter sample -- the \(\rho \approx 1\) row is the one to check against
+that claim.}
+\label{tab:table3a}
+\end{table}
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table3b_siz.tex}
+\caption{Table 3b (dividend yield predicts NYSE returns, 1973--2000, SIZ
+panel). Compare \(\hat\rho\) against Table 3a's: the paper's argument for
+why the conditional test dominates depends on both subperiods staying close
+to a unit root, not just the full sample.}
+\label{tab:table3b}
+\end{table}
+
+\paragraph{Sensitivity to the 1995--2000 run-up (Table 4).} The paper's
+Section 4.2 shows that dropping the last five years of the sample roughly
+doubles the OLS slope on \(\log(DY)\) while leaving the \(\rho \approx 1\)
+estimate nearly unchanged, because the same run-up that inflates the OLS
+coefficient also pushes \(\hat\rho\) higher, which the conditional test's
+bias term absorbs. Table 4 repeats that comparison on our data,
+1946--1994 against 1946--2000:
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table4a_siz.tex}
+\caption{Table 4a (dividend yield predicts NYSE returns, 1946--1994, SIZ
+panel, nominal returns only, per the paper).}
+\label{tab:table4a}
+\end{table}
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table4b_siz.tex}
+\caption{Table 4b (dividend yield predicts NYSE returns, 1946--2000, SIZ
+panel, repeated from Table 2 for direct comparison against Table 4a). The
+OLS row should move noticeably between the two tables; the \(\rho \approx
+1\) row should not -- that stability is the paper's point about the
+conditional test absorbing the run-up through \(\hat\rho\) rather than
+through the point estimate.}
+\label{tab:table4b}
+\end{table}
+
 \paragraph{Book-to-market and earnings-price ratios (Tables 5--6) required
 resolving a real definitional ambiguity.} Our initial pull of \(B/M\)
 averaged 58.69 over 1963--2000 against the paper's published 53.13, a
@@ -201,6 +251,47 @@ history'' screen and 20+ years of subsequent Compustat data restatement.
 Per the assigned scope, \(B/M\) (Table 5) is the designated deliverable;
 \(E/P\) (Table 6) is carried as a robustness check.
 
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table5a_siz.tex}
+\caption{Table 5a (book-to-market predicts NYSE returns, June
+1963--Dec\ 1994, SIZ panel, deferred taxes excluded from book equity). The
+paper reports significant predictability for nominal returns only in this
+subperiod; compare the OLS and \(\rho \approx 1\) \(p\)-value rows for
+nominal vs.\ excess VWNY/EWNY.}
+\label{tab:table5a}
+\end{table}
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table5b_siz.tex}
+\caption{Table 5b (book-to-market predicts NYSE returns, June
+1963--Dec\ 2000, SIZ panel). The paper finds \(B/M\) predicts the
+equal-weighted index once 1995--2000 is included but loses power for
+VWNY -- worth checking whether that same asymmetry between EWNY and VWNY
+shows up here.}
+\label{tab:table5b}
+\end{table}
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table6a_siz.tex}
+\caption{Table 6a (earnings-price ratio predicts NYSE returns, June
+1963--Dec\ 1994, SIZ panel). Carried as a robustness check on Table 5;
+identical machinery with \(\log(E/P)\) in place of \(\log(B/M)\).}
+\label{tab:table6a}
+\end{table}
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table6b_siz.tex}
+\caption{Table 6b (earnings-price ratio predicts NYSE returns, June
+1963--Dec\ 2000, SIZ panel). \(E/P\)'s underlying data passed the Table 1
+QA gate cleanly with no coverage-ramp caveat, unlike \(B/M\), so this
+table's numbers do not carry the same residual-gap discussion as Table 5.}
+\label{tab:table6b}
+\end{table}
+
 \section{Extension}
 \label{sec:extension}
 
@@ -213,6 +304,17 @@ conclusion survives}: for 1946--2025 (VWNY), OLS gives \(\hat b = 0.862\)
 pattern the paper is built around, twenty-five years past its original
 cutoff: the unconditional test fails to reject while the conditional test
 rejects decisively.
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table_ext_1946_ciz.tex}
+\caption{Extension, 1946--2025 (CIZ panel): the full sample carried
+twenty-five years past the paper's original cutoff. Compare the OLS and
+\(\rho \approx 1\) \(p\)-value rows -- the pattern the paper is built
+around, Stambaugh failing to reject where the conditional test rejects
+decisively, should still be visible here.}
+\label{tab:table-ext-1946}
+\end{table}
 
 Splitting the extension at 2001 is more interesting, and is not a
 counterexample to the paper. Dividend yield's autocorrelation falls to
@@ -231,6 +333,17 @@ OLS slope over the same window (0.862 to 3.862) with a stable $p$-value is
 the small-sample bias the paper is about, made visible by a shorter,
 less-persistent sample rather than by any change in the underlying
 economics.
+
+\begin{table}[H]
+\centering
+\input{\PathToOutput/table_ext_2001_ciz.tex}
+\caption{Extension, 2001--2025 (CIZ panel): data the paper never saw. The
+low \(\hat\rho\) row is the number to read first -- it sits below the
+paper's own stated power threshold for a 25-year sample, so the \(\rho
+\approx 1\) row's loss of significance here is the paper's stated
+limitation playing out, not a contradiction of its result.}
+\label{tab:table-ext-2001}
+\end{table}
 
 As a robustness check, we also compare the SIZ and CIZ schemas over an
 identical 1946--2024 window (truncating CIZ to match SIZ's endpoint, so the

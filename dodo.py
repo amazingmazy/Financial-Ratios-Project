@@ -299,7 +299,14 @@ def task_compile_latex_docs():
     this project does not use FRED for its exhibits.
     """
     tex = REPORTS / "replication_report.tex"
-    replication_tables = [OUTPUT_DIR / f"{name}_siz.tex" for name in REPLICATION_TABLE_NAMES]
+    replication_tables = [OUTPUT_DIR / f"{name}_siz.tex" for name in REPLICATION_TABLE_NAMES
+                           if name not in ("table_ext_1946", "table_ext_2001")]
+    # Extension tables specifically need CIZ, not SIZ: SIZ stops at 2024-12-31
+    # and cannot produce the 1946-2025 / 2001-2025 windows the Extension
+    # section's prose describes (see ISSUE2.md, "Known gaps: legacy CRSP
+    # tables are frozen at 2024"). Using the _siz-tagged version here would
+    # silently show a different, shorter window than the text next to it.
+    extension_tables = [OUTPUT_DIR / f"{name}_ciz.tex" for name in ("table_ext_1946", "table_ext_2001")]
     return {
         "actions": [
             f'latexmk -xelatex -halt-on-error -cd "{tex}"',
@@ -310,8 +317,8 @@ def task_compile_latex_docs():
             OUTPUT_DIR / "pandas_to_latex_simple_table1.tex",
             OUTPUT_DIR / "own_summary_table.tex",
             OUTPUT_DIR / "own_rho_evolution.png",
-        ] + replication_tables,
-        "task_dep": ["generated_tables", "exhibits", "tables_siz"],
+        ] + replication_tables + extension_tables,
+        "task_dep": ["generated_tables", "exhibits", "tables_siz", "tables_ciz"],
         "targets": [REPORTS / "replication_report.pdf"],
         "clean": True,
     }
