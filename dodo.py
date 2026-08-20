@@ -67,8 +67,8 @@ REPORTS = BASE_DIR / "reports"
 
 PY = sys.executable  # the interpreter running doit, so the env is never ambiguous
 
-START_DATE = config("START_DATE").strftime("%Y-%m-%d")
-SIZ_END_DATE = config("SIZ_END_DATE").strftime("%Y-%m-%d")
+START_DATE = config("START_DATE").strftime("%Y-%m-%d") #to be monitored
+SIZ_END_DATE = config("SIZ_END_DATE").strftime("%Y-%m-%d") #to be monitored
 N_SIMS = config("N_SIMS")
 
 PANEL_SIZ = DATA_DIR / "master_panel.csv"
