@@ -419,6 +419,7 @@ without adding a guarantee.
 The file did have two real problems, both fixed: `streamlit` was absent, so the
 dashboard could not run and `test_dashboard.py` silently skipped; and roughly
 ten unused packages were carried along, the FastAPI stack among them, from the
-same unrelated template that left the `Makefile` and `Dockerfile` pointing at an
-`app/` directory this project has never had. After the rewrite the suite runs
-217 passed, 0 skipped from a clean environment.
+same unrelated template that left a `Makefile` and `Dockerfile` pointing at an
+`app/` directory this project has never had (both since deleted, along with
+`main.py`, a uv hello-world stub). After the rewrite the suite runs 217 passed,
+0 skipped from a clean environment.

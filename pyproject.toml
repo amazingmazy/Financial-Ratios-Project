@@ -1,9 +1,9 @@
 [project]
 name = "financial-ratios-project"
 version = "0.1.0"
-description = "Add your description here"
+description = "Replication and extension of Lewellen (2004), Predicting returns with financial ratios"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "black>=26.5.1",
     "chartbook>=0.1.1",
