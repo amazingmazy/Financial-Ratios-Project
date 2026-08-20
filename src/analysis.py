@@ -37,6 +37,7 @@ import pandas as pd
 from settings import config
 from estimators import fit_ar1
 from dashboard_data import power_threshold
+from replicate_paper_tables import write_macros_file
 
 OUTPUT_DIR = Path(config("OUTPUT_DIR"))
 
@@ -147,21 +148,51 @@ def rolling_rho(df: pd.DataFrame, col: str = "logDY") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def plot_rolling_rho(rolling: pd.DataFrame, path: Path) -> None:
+def summarize_rolling_rho(rolling: pd.DataFrame, threshold: float) -> dict:
+    """Peak and current rho_hat, not just the first threshold crossing.
+
+    A "first crosses below threshold" headline is dominated by whichever
+    window happens to be earliest and lowest-variance -- with a panel
+    starting in 1926 that's the Depression-era window, which crosses and
+    re-crosses several times and says nothing about the paper's own
+    1946-2000 sample or about where things stand today. The peak value and
+    year, and the current value, tell a sharper and more defensible story:
+    persistence rose to its maximum right around when Lewellen's own sample
+    ends, then eroded steadily since. Both numbers come from the same
+    rolling series the figure plots, so the two can't disagree.
+    """
+    peak = rolling.loc[rolling["rho_hat"].idxmax()]
+    current = rolling.iloc[-1]
+    macros = {
+        "RhoThreshold": f"{threshold:.3f}",
+        "RhoPeakValue": f"{peak['rho_hat']:.4f}",
+        "RhoPeakYear": f"{pd.Timestamp(peak['date']).year}",
+        "RhoCurrentValue": f"{current['rho_hat']:.4f}",
+        "RhoCurrentYear": f"{pd.Timestamp(current['date']).year}",
+    }
+    below = rolling[rolling["rho_hat"] < threshold]
+    if len(below):
+        macros["RhoFirstCrossYear"] = f"{pd.Timestamp(below.iloc[0]['date']).year}"
+    return macros
+
+
+def plot_rolling_rho(rolling: pd.DataFrame, threshold: float, path: Path) -> None:
     fig, ax = plt.subplots(figsize=(8, 4.5))
 
     ax.plot(rolling["date"], rolling["rho_hat"], color="black", lw=1.5,
             label=r"Rolling $\hat\rho$, log(DY) (25-yr trailing window)")
 
-    # Reference line: power_threshold expects the window length in months,
-    # which is constant here (ROLLING_MONTHS) since every plotted point uses
-    # the same trailing-window length by construction.
-    threshold = power_threshold(ROLLING_MONTHS, "monthly")
     ax.axhline(threshold, color="firebrick", ls="--", lw=1.2,
                label=rf"Paper's power threshold, {ROLLING_YEARS}-yr window ($\hat\rho \geq {threshold:.3f}$)")
 
     ax.axvline(pd.Timestamp("2000-12-31"), color="grey", ls=":", lw=1,
                label="Paper's sample end (2000)")
+
+    peak = rolling.loc[rolling["rho_hat"].idxmax()]
+    ax.scatter([peak["date"]], [peak["rho_hat"]], color="black", zorder=5, s=30)
+    ax.annotate(f"peak {peak['rho_hat']:.4f} ({pd.Timestamp(peak['date']).year})",
+                xy=(peak["date"], peak["rho_hat"]), xytext=(0, -14),
+                textcoords="offset points", fontsize=8, ha="center", va="top")
 
     ax.set_ylabel(r"$\hat\rho$")
     ax.set_xlabel("Window end date")
@@ -180,24 +211,36 @@ def plot_rolling_rho(rolling: pd.DataFrame, path: Path) -> None:
 def main(panel_path: str) -> None:
     df = pd.read_csv(panel_path, parse_dates=["date"]).sort_values("date").reset_index(drop=True)
 
+    # Match the paper's own sample start (Section 3: "I omit the Depression
+    # era because the properties of stock prices were much different prior
+    # to 1945"). Without this filter, a panel pulled from 1926 (settings.py's
+    # START_DATE default, kept for pre-sample AR(1) burn-in) produces a first
+    # rolling window ending ~1951 that is dominated by Depression-era
+    # volatility and crosses the power threshold several times on its own --
+    # a misleading "first crossing" that says nothing about the paper's
+    # actual sample or about where persistence stands today.
+    df = df[df["date"] >= "1946-01-01"].reset_index(drop=True)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     table = decade_summary_table(df)
     write_summary_table_tex(table, OUTPUT_DIR / "own_summary_table.tex")
 
     rolling = rolling_rho(df, "logDY")
-    plot_rolling_rho(rolling, OUTPUT_DIR / "own_rho_evolution.png")
+    threshold = power_threshold(ROLLING_MONTHS, "monthly")
+    plot_rolling_rho(rolling, threshold, OUTPUT_DIR / "own_rho_evolution.png")
 
-    # Printed for the console/log, not for the report -- a quick sanity
-    # check that the crossing the figure shows is real and not a plotting
-    # artefact.
-    below = rolling[rolling["rho_hat"] < power_threshold(ROLLING_MONTHS, "monthly")]
-    if len(below):
-        first_cross = below.iloc[0]["date"]
-        print(f"rho_hat first drops below the {ROLLING_YEARS}-yr power threshold "
-              f"around window ending {pd.Timestamp(first_cross).date()}")
+    macros = summarize_rolling_rho(rolling, threshold)
+    write_macros_file(macros, str(OUTPUT_DIR), "macros_own_exhibits")
+
+    print(f"Peak rho_hat: {macros['RhoPeakValue']} in {macros['RhoPeakYear']}")
+    print(f"Current rho_hat: {macros['RhoCurrentValue']} as of {macros['RhoCurrentYear']}")
+    if "RhoFirstCrossYear" in macros:
+        print(f"First crosses below the {ROLLING_YEARS}-yr power threshold "
+              f"in {macros['RhoFirstCrossYear']} (informational only -- the "
+              f"peak/current comparison above is the stronger claim)")
     else:
-        print(f"rho_hat never drops below the {ROLLING_YEARS}-yr power threshold in this sample")
+        print(f"Never drops below the {ROLLING_YEARS}-yr power threshold in this sample")
 
 
 if __name__ == "__main__":

@@ -307,8 +307,13 @@ def task_exhibits():
     script = SRC / "analysis.py"
     return {
         "actions": [f'"{PY}" "{script}" "{PANEL_CIZ}"'],
-        "file_dep": [script, PANEL_CIZ, SRC / "estimators.py", SRC / "dashboard_data.py"],
-        "targets": [OUTPUT_DIR / "own_summary_table.tex", OUTPUT_DIR / "own_rho_evolution.png"],
+        "file_dep": [script, PANEL_CIZ, SRC / "estimators.py", SRC / "dashboard_data.py",
+                     SRC / "replicate_paper_tables.py"],
+        "targets": [
+            OUTPUT_DIR / "own_summary_table.tex",
+            OUTPUT_DIR / "own_rho_evolution.png",
+            OUTPUT_DIR / "macros_own_exhibits.tex",
+        ],
         "clean": True,
     }
 
@@ -347,6 +352,7 @@ def task_compile_latex_docs():
         OUTPUT_DIR / "macros_table_ext_1946_ciz.tex",
         OUTPUT_DIR / "macros_table_ext_2001_ciz.tex",
         OUTPUT_DIR / "macros_schema_compare.tex",
+        OUTPUT_DIR / "macros_own_exhibits.tex",
     ]
     return {
         "actions": [

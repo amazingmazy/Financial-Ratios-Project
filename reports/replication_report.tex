@@ -48,6 +48,7 @@
 \input{\PathToOutput/macros_table_ext_1946_ciz.tex}
 \input{\PathToOutput/macros_table_ext_2001_ciz.tex}
 \input{\PathToOutput/macros_schema_compare.tex}
+\input{\PathToOutput/macros_own_exhibits.tex}
 
 \begin{abstract}
 We replicate Lewellen (2004), which argues that the standard Stambaugh (1999)
@@ -380,8 +381,9 @@ Section~\ref{sec:extension}.
 Table~\ref{tab:own-decades} reports mean, standard deviation, and lag-1
 autocorrelation (\(\hat\rho\)) of \(\log(DY)\), \(\log(B/M)\), and
 \(\log(E/P)\) by decade. \(\log(DY)\)'s persistence is not flat across the
-sample: persistence varies through the 2000s and before but declines by the 2010s, roughly
-matching the crossing shown in Figure~\ref{fig:own-rho}.
+sample: it stays high through the decades surrounding the paper's own
+1946--2000 window, then declines in more recent decades, consistent with
+the continuous picture in Figure~\ref{fig:own-rho}.
 
 \begin{table}[H]
 \centering
@@ -390,26 +392,38 @@ matching the crossing shown in Figure~\ref{fig:own-rho}.
 }
 \caption{Mean, standard deviation, and lag-1 autocorrelation of
 \(\log(DY)\), \(\log(B/M)\), and \(\log(E/P)\) by decade, 1946--2025 (CIZ
-panel). The takeaway is in the \(\hat\rho\) columns, not the levels: \(\log(DY)\)'s autocorrelation declines by the 2010s while \(\log(B/M)\)
+panel). The takeaway is in the \(\hat\rho\) columns, not the levels: \(\log(DY)\)'s autocorrelation declines in recent decades while \(\log(B/M)\)
 and \(\log(E/P)\) remain comparatively stable.}
 \label{tab:own-decades}
 \end{table}
 
 Figure~\ref{fig:own-rho} makes the same point continuously rather than by
-decade, plotting a rolling 25-year \(\hat\rho\) for \(\log(DY)\) against the
-paper's own stated power threshold for a window of that length. The rolling \(\hat\rho\) crosses below the threshold around 2014, roughly a
-decade after the post-2000 decline noted in Section~\ref{sec:extension} --
-the 2001--2025 subsample there already sits on the low side of the paper's
-power threshold on average, and this figure shows the specific point at
-which a trailing 25-year window stops qualifying at all
+decade, and sharpens it. Rather than reporting where a rolling 25-year
+\(\hat\rho\) for \(\log(DY)\) first happens to dip below the paper's own
+power threshold -- a framing sensitive to whichever window is earliest and
+noisiest, and not informative on its own -- the series has a clear shape:
+it \textbf{peaks at \(\RhoPeakValue\) in \(\RhoPeakYear\), essentially
+exactly where Lewellen's own sample ends}, and has eroded steadily since,
+to \(\RhoCurrentValue\) as of \(\RhoCurrentYear\). The conditions the
+\(\rho \approx 1\) conditional test needs were at their most favorable
+precisely when the paper was written, and have been weakening ever since.
+(For reference, the series first dips below the \RhoThreshold{} threshold
+around \RhoFirstCrossYear{}, but that single crossing is a much weaker
+claim than the peak-to-current trajectory -- the series recrosses the
+threshold repeatedly rather than declining monotonically, so a first-crossing
+date alone would understate how much of the decline happened well after
+that point.)
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.85\textwidth]{own_rho_evolution.png}
 \caption{Rolling 25-year autocorrelation of \(\log(DY)\), 1946--2025 (CIZ
 panel), against the paper's own power threshold for a window of that length
-(Section 2.4). \(\hat\rho\) crosses below the 0.980 threshold around 2014, after which
-a 25-year trailing window no longer supports the conditional test's power}
+(Section 2.4). Persistence peaks at \(\RhoPeakValue\) in \(\RhoPeakYear\) --
+almost exactly where the paper's own 1946--2000 sample ends -- and has
+declined since to \(\RhoCurrentValue\) by \(\RhoCurrentYear\), its lowest
+sustained level in the post-1946 sample: the conditions the conditional
+test depends on were most favorable right when Lewellen was writing.}
 \label{fig:own-rho}
 \end{figure}
 
