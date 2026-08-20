@@ -48,6 +48,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from settings import config  # noqa: E402
@@ -67,8 +68,8 @@ REPORTS = BASE_DIR / "reports"
 
 PY = sys.executable  # the interpreter running doit, so the env is never ambiguous
 
-START_DATE = config("START_DATE").strftime("%Y-%m-%d") #to be monitored
-SIZ_END_DATE = config("SIZ_END_DATE").strftime("%Y-%m-%d") #to be monitored
+START_DATE = datetime.strptime(config("START_DATE"), "%Y-%m-%d")
+SIZ_END_DATE = datetime.strptime(config("SIZ_END_DATE"), "%Y-%m-%d")
 N_SIMS = config("N_SIMS")
 
 PANEL_SIZ = DATA_DIR / "master_panel.csv"
