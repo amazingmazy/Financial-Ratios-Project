@@ -33,7 +33,7 @@ run_issue1.py              CLI orchestrator
 ### With WRDS/CRSP access (real data)
 
 ```bash
-python run_issue1.py --source wrds --start 1926-01-01 --out data/master_panel.csv
+python run_issue1.py --source wrds --start 1926-01-01 --out _data/master_panel.csv
 ```
 
 This will prompt for your WRDS credentials (via the `wrds` package's standard
@@ -65,7 +65,7 @@ live connection:
 ### Offline dry run (no WRDS needed)
 
 ```bash
-python run_issue1.py --source synthetic --out data/master_panel_demo.csv --skip-qa
+python run_issue1.py --source synthetic --out _data/master_panel_demo.csv --skip-qa
 ```
 
 This generates synthetic data with the right shape/schema and runs the full
@@ -80,7 +80,7 @@ the file for inspection.
 Per the README: **do not proceed to Issue 2 until Table 1 matches.** Run:
 
 ```bash
-python -m src.qa_table1 data/master_panel.csv
+python -m src.qa_table1 _data/master_panel.csv
 ```
 
 or it runs automatically as the last step of `run_issue1.py` (which exits
@@ -218,8 +218,8 @@ guess a third fix blind, this round adds:
    discontinuity rather than organic growth). Run:
    ```bash
    python run_issue1.py --source wrds --start 1926-01-01 \
-       --out data/master_panel.csv --debug-out data/master_panel_debug.csv
-   python src/diagnose_bm.py data/master_panel_debug.csv
+       --out _data/master_panel.csv --debug-out _data/master_panel_debug.csv
+   python src/diagnose_bm.py _data/master_panel_debug.csv
    ```
    This tells us definitively what's driving logB/M's SD, instead of another
    round of blind hypothesis-and-rerun.

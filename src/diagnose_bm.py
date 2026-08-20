@@ -16,8 +16,8 @@ columns) and prints:
 
 Usage:
     python run_issue1.py --source wrds --start 1926-01-01 \
-        --out data/master_panel.csv --debug-out data/master_panel_debug.csv
-    python src/diagnose_bm.py data/master_panel_debug.csv
+        --out _data/master_panel.csv --debug-out _data/master_panel_debug.csv
+    python src/diagnose_bm.py _data/master_panel_debug.csv
 """
 
 from __future__ import annotations

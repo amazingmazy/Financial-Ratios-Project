@@ -19,7 +19,7 @@ It produces two things from the extended CIZ panel:
    when and whether the series crosses below them.
 
 Run as:
-    python src/analysis.py data/master_panel_ciz.csv
+    python src/analysis.py _data/master_panel_ciz.csv
 """
 
 from __future__ import annotations

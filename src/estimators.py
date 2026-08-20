@@ -306,7 +306,7 @@ def run_all(r: np.ndarray, x: np.ndarray, n_sims: int = 20000, rho_assumed: floa
     # rho_hat itself) looks like the paper's regime. Worth checking directly
     # rather than inferring from how strong/weak the downstream effects look,
     # since e_hat and m_hat are already computed as part of the AR(1) and OLS
-    # fits above -- see docs/ISSUE2.md for how the paper's own reported
+    # fits above -- see ISSUE2.md for how the paper's own reported
     # corr(e,m) (-0.955 for VWNY, Table 2) compares.
     m_hat = ar1["resid"]
     e_hat = ols["resid"]

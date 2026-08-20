@@ -18,7 +18,7 @@ tests/test_replicate_paper_tables.py   Plumbing tests (window filtering,
 ## Running it
 
 ```bash
-python src/replicate_paper_tables.py data/master_panel.csv
+python src/replicate_paper_tables.py _data/master_panel.csv
 ```
 
 This produces, in order:
@@ -40,7 +40,7 @@ correlation between return shocks and predictor-innovation shocks, which
 drives both the Stambaugh correction's magnitude and the ρ≈1 test's
 standard-error reduction. For DY this should land close to the paper's
 reported -0.955; a value near zero was the symptom of a real bug (see
-`docs/ISSUE1.md`'s eighth-round changelog) rather than a property of the
+`ISSUE1.md`'s eighth-round changelog) rather than a property of the
 data. For B/M and E/P, expect it to run somewhat weaker than DY's, since
 their "shocks" combine monthly price moves with much less frequent annual
 accounting updates.
@@ -48,14 +48,14 @@ accounting updates.
 Each table prints in a layout matching the paper's own (AR(1) ρ, corr(e,m),
 then one row per estimator — OLS, Stambaugh, ρ≈1 — each showing the
 coefficient, standard error, and p-value), and all results are also written
-to `output/issue2_tables_2_3_4_5_6.csv` in tidy long format for further
+to `_output/issue2_tables_2_3_4_5_6.csv` in tidy long format for further
 analysis or plotting.
 
 **No year exclusion is applied to the B/M or E/P samples.** Per your
 instruction, Tables 5 and 6 use the full 1963-2000 window as constructed in
 Issue 1, including the 1963-1966 period whose data characteristics
 (gradual Compustat book-equity coverage backfill) are documented in
-`docs/ISSUE1.md` but not excluded here.
+`ISSUE1.md` but not excluded here.
 
 ## Runtime
 
@@ -310,10 +310,10 @@ different dates and a hard-coded end would silently truncate one of them.
 `--tag` suffixes the output CSV so both schemas can be run side by side.
 
 ```bash
-python src/replicate_paper_tables.py data/master_panel.csv     --extended --tag siz
-python src/replicate_paper_tables.py data/master_panel_ciz.csv --extended --tag ciz
+python src/replicate_paper_tables.py _data/master_panel.csv     --extended --tag siz
+python src/replicate_paper_tables.py _data/master_panel_ciz.csv --extended --tag ciz
 # matched window, for the schema comparison below
-python src/replicate_paper_tables.py data/master_panel_ciz.csv --extended \
+python src/replicate_paper_tables.py _data/master_panel_ciz.csv --extended \
     --end 2024-12-31 --tag ciz2024
 ```
 
