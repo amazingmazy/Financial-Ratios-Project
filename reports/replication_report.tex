@@ -446,23 +446,49 @@ answered, and it is not one Lewellen's own tables can address.
 \section{Conclusion}
 \label{sec:conclusion}
 
-The dividend-yield replication (Tables 1--3) is essentially exact, with the
-OLS standard error matching the paper to three decimal places and every
-estimator -- OLS, Stambaugh, and the \(\rho \approx 1\) conditional test --
-reproducing both the point estimates and the paper's central finding that
-the conditional test rejects the null far more decisively than the
-unconditional one. The main challenge was in the book-to-market and
-earnings-price construction, where an unstated definitional choice --
-whether to include deferred taxes in book equity -- accounted for most of
-an initial 10\% discrepancy; resolving it required treating the paper's own
-ambiguity as a flag rather than assuming a single correct formula. The
-extension to 2025 both confirms the paper's headline result over the full
-sample and illustrates its own stated limitation once dividend yield's
-autocorrelation falls below the paper's power threshold post-2000 -- a
-result the paper's Table A.1 predicts rather than one that undermines it.
-Our own exhibits (Section~\ref{sec:exhibits}) extend that point one step
-further, showing directly where and when that decline in persistence
-occurs, which is the piece of the picture the paper's own 1946--2000 sample
-cannot show.
+\paragraph{Where it worked.} The dividend-yield replication is essentially
+exact. Our OLS standard error for VWNY over 1946--2000 is 0.477 against the
+paper's published 0.476 -- agreement to three decimal places on a statistic
+that depends jointly on the index construction, the dividend-flow
+reconstruction, and the sample being the same 660 months. Tables~1 through 3
+reproduce with no failures against the tolerances fixed before we saw our
+results, and the qualitative pattern the paper is built around survives the
+extension to 2025: the unconditional test declines to reject where the
+conditional test rejects decisively.
+
+\paragraph{Where it was hard: the errors that looked like successes.} Every
+substantive problem we hit shared a shape -- the pipeline produced plausible
+output, and only a second, jointly-determined statistic revealed the fault.
+
+An early version of the index aggregation computed the dividend yield's
+denominator from lagged rather than current market value. This shifted the
+entire \(DY\) series by one month. Every univariate statistic in Table~1 --
+mean, standard deviation, skewness, autocorrelation -- remained correct, and
+the QA gate passed. What failed was \(\mathrm{corr}(e,m)\), which collapsed
+from its expected \(\approx -0.9\) to roughly \(-0.05\). Because that
+correlation is what drives both the Stambaugh bias adjustment and the
+\(\rho \approx 1\) test's variance reduction, the estimators still ran and
+still returned numbers; they were simply answering a question about
+misaligned data. We now assert \(\mathrm{corr}(e,m)\) explicitly in the test
+suite for that reason.
+
+\paragraph{Where the data would not cooperate.}
+CRSP's legacy tables stopped being updated after 2024-12-31 while the current
+schema runs a year further; the legacy path returns a short panel rather than
+an error, so an extension built on it would have silently ended early and
+looked complete. And the book-to-market construction diverged from the paper
+by about 10\%, which we could only localize because \(E/P\) diverged by half
+as much -- an error in the firm-level accounting pull would have moved both
+equally, so the asymmetry pointed at the book-equity formula specifically,
+and from there to deferred taxes.
+
+\paragraph{What remains unresolved.} Excluding deferred taxes brings \(B/M\)
+within 2\% of the published mean but leaves its long-lag persistence below
+the paper's, and a residual gap of roughly 5\% remains in both Compustat
+ratios. We report this rather than tuning it away: the paper specifies
+neither the firm screen nor the book-equity formula, so beyond a certain
+point the comparison stops being a test of our implementation and becomes a
+guess about an unstated choice. The dividend-yield results, where the paper
+\emph{is} specific, are where the replication should be judged.
 
 \end{document}
