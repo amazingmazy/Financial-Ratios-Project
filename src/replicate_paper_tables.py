@@ -172,6 +172,52 @@ def write_table_tex_file(table: pd.DataFrame, out_dir: str, name: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# Prose macros: the same numbers that appear in a table, exported as
+# \newcommand{}s so the report's narrative text can \FooBarB{} instead of
+# typing "0.862" by hand. Prose that quotes a table's own numbers is exactly
+# where hand-typed literals silently go stale (a re-run changes the table,
+# the sentence next to it doesn't) -- pulling from the same row write_table_tex
+# reads makes that class of drift structurally impossible rather than just
+# less likely.
+# --------------------------------------------------------------------------
+
+# \newcommand names must be letters only (no digits, no underscores), so
+# callers pass an already-alphabetic prefix (e.g. "ExtFull", not "Ext1946").
+_MACRO_SUFFIXES = [
+    ("Window", "window", "{}"),
+    ("T", "T", "{:.0f}"),
+    ("RhoHat", "rho_hat", "{:.4f}"),
+    ("CorrEM", "corr_em", "{:.4f}"),
+    ("OLSb", "OLS_b", "{:.4f}"), ("OLSse", "OLS_se", "{:.4f}"), ("OLSp", "OLS_p", "{:.3f}"),
+    ("StambB", "Stambaugh_b", "{:.4f}"), ("StambSe", "Stambaugh_se", "{:.4f}"), ("StambP", "Stambaugh_p", "{:.3f}"),
+    ("RhoOneB", "rho1_b", "{:.4f}"), ("RhoOneSe", "rho1_se", "{:.4f}"),
+    ("RhoOneT", "rho1_t", "{:.2f}"), ("RhoOneP", "rho1_p", "{:.3f}"),
+    ("JointP", "joint_p", "{:.4f}"),
+]
+
+
+def row_macros(table: pd.DataFrame, series: str, prefix: str) -> dict:
+    """One table row (e.g. VWNY) as {macro_name: formatted_value}."""
+    if table.empty or series not in table["series"].values:
+        return {}
+    row = table.loc[table["series"] == series].iloc[0]
+    return {f"{prefix}{suffix}": fmt.format(row[col]) for suffix, col, fmt in _MACRO_SUFFIXES}
+
+
+def write_macros_file(macros: dict, out_dir: str, name: str) -> str:
+    """Write {macro_name: value} as \\newcommand lines to <out_dir>/<name>.tex.
+
+    Uses \\renewcommand-safe \\providecommand so re-\\input-ing (e.g. during a
+    LaTeX compile's second pass) doesn't raise "already defined"."""
+    path = os.path.join(out_dir, f"{name}.tex")
+    lines = [f"\\providecommand{{\\{k}}}{{}}\\renewcommand{{\\{k}}}{{{v}}}" for k, v in macros.items()]
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + ("\n" if lines else "% (no macros: empty table)\n"))
+    print(f"wrote {path}")
+    return path
+
+
+# --------------------------------------------------------------------------
 # Main: Tables 2, 3, 4, 5
 # --------------------------------------------------------------------------
 
@@ -202,6 +248,7 @@ def run_extended(df: pd.DataFrame, n_sims: int, out_dir: str, tag_suffix: str) -
     end_str = end.strftime("%Y-%m-%d")
     end_lbl = end.strftime("%Y")
     tables = []
+    macro_prefixes = {"table_ext_1946": "ExtFull", "table_ext_2001": "ExtRecent"}
 
     for start, start_lbl, title, name in [
         ("1946-01-01", "1946", "full sample extended to the present", "table_ext_1946"),
@@ -212,6 +259,7 @@ def run_extended(df: pd.DataFrame, n_sims: int, out_dir: str, tag_suffix: str) -
         print_paper_style(t, f"EXTENDED — Dividend yield predicts NYSE returns, "
                              f"{start_lbl}-{end_lbl} ({title})")
         write_table_tex_file(t, out_dir, f"{name}{tag_suffix}")
+        write_macros_file(row_macros(t, "VWNY", macro_prefixes[name]), out_dir, f"macros_{name}{tag_suffix}")
         tables.append(t)
 
     if tables and not tables[-1].empty:
@@ -262,6 +310,7 @@ def main():
                    "1946-2000", "1946-01-01", "2000-12-31", n_sims=args.n_sims)
     print_paper_style(t2, "TABLE 2 — Dividend yield predicts NYSE returns, 1946-2000")
     write_table_tex_file(t2, args.out_dir, f"table2{tag_suffix}")
+    write_macros_file(row_macros(t2, "VWNY", "TableTwoOurs"), args.out_dir, f"macros_table2{tag_suffix}")
     all_tables.append(t2)
 
     # ---- Table 3: DY, subsamples ----

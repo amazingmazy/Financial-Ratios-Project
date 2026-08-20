@@ -164,17 +164,26 @@ REPLICATION_TABLE_NAMES = [
     "table_ext_1946", "table_ext_2001",
 ]
 
+# Subset that also gets a macros_<name>_<tag>.tex written (see main() and
+# run_extended() in replicate_paper_tables.py) -- these are the tables whose
+# specific numbers the report's prose quotes by name, not all 11.
+MACRO_TABLE_NAMES = ["table2", "table_ext_1946", "table_ext_2001"]
+
 
 def _tables_task(tag, panel, extra_args=""):
     csv_target = OUTPUT_DIR / f"issue2_tables_2_3_4_5_6_extended_{tag}.csv"
     tex_targets = [OUTPUT_DIR / f"{name}_{tag}.tex" for name in REPLICATION_TABLE_NAMES]
+    # Every macro-bearing table also gets a matching macros_<name>_<tag>.tex,
+    # from the same run, so a table and the prose macros describing it can
+    # never disagree.
+    macro_targets = [OUTPUT_DIR / f"macros_{name}_{tag}.tex" for name in MACRO_TABLE_NAMES]
     return {
         "actions": [
             f'"{PY}" "{SRC / "replicate_paper_tables.py"}" "{panel}" '
             f"--extended --tag {tag} --n-sims {N_SIMS} {extra_args}".strip()
         ],
         "file_dep": TABLE_DEPS + [panel],
-        "targets": [csv_target] + tex_targets,
+        "targets": [csv_target] + tex_targets + macro_targets,
         "clean": True,
     }
 
@@ -197,6 +206,28 @@ def task_tables_ciz2024():
     the schema.
     """
     return _tables_task("ciz2024", PANEL_CIZ, f"--end {SIZ_END_DATE}")
+
+
+def task_schema_compare_macros():
+    """Emit the SIZ-vs-CIZ2024 corr(e,m) macros for the Extension section's
+    schema-robustness paragraph.
+
+    Reads the combined CSVs tables_siz and tables_ciz2024 already produce,
+    rather than recomputing -- this is a pure re-export of two numbers that
+    already exist, so the schema-comparison sentence can't disagree with the
+    two runs that back it.
+    """
+    script = SRC / "schema_compare_macros.py"
+    siz_csv = OUTPUT_DIR / "issue2_tables_2_3_4_5_6_extended_siz.csv"
+    ciz2024_csv = OUTPUT_DIR / "issue2_tables_2_3_4_5_6_extended_ciz2024.csv"
+    target = OUTPUT_DIR / "macros_schema_compare.tex"
+    return {
+        "actions": [f'"{PY}" "{script}" "{siz_csv}" "{ciz2024_csv}" "{target}"'],
+        "file_dep": [script, SRC / "replicate_paper_tables.py", siz_csv, ciz2024_csv],
+        "task_dep": ["tables_siz", "tables_ciz2024"],
+        "targets": [target],
+        "clean": True,
+    }
 
 
 def task_test():
@@ -307,6 +338,16 @@ def task_compile_latex_docs():
     # tables are frozen at 2024"). Using the _siz-tagged version here would
     # silently show a different, shorter window than the text next to it.
     extension_tables = [OUTPUT_DIR / f"{name}_ciz.tex" for name in ("table_ext_1946", "table_ext_2001")]
+    # Prose macros mirror the same siz/ciz split as their matching tables --
+    # \TableTwoOurs* from the siz run, \ExtFull*/\ExtRecent* from the ciz run,
+    # so a macro is always sourced from the same run as the table it appears
+    # next to.
+    macros = [
+        OUTPUT_DIR / "macros_table2_siz.tex",
+        OUTPUT_DIR / "macros_table_ext_1946_ciz.tex",
+        OUTPUT_DIR / "macros_table_ext_2001_ciz.tex",
+        OUTPUT_DIR / "macros_schema_compare.tex",
+    ]
     return {
         "actions": [
             f'latexmk -xelatex -halt-on-error -cd "{tex}"',
@@ -317,8 +358,9 @@ def task_compile_latex_docs():
             OUTPUT_DIR / "pandas_to_latex_simple_table1.tex",
             OUTPUT_DIR / "own_summary_table.tex",
             OUTPUT_DIR / "own_rho_evolution.png",
-        ] + replication_tables + extension_tables,
-        "task_dep": ["generated_tables", "exhibits", "tables_siz", "tables_ciz"],
+        ] + replication_tables + extension_tables + macros,
+        "task_dep": ["generated_tables", "exhibits", "tables_siz", "tables_ciz",
+                      "tables_ciz2024", "schema_compare_macros"],
         "targets": [REPORTS / "replication_report.pdf"],
         "clean": True,
     }
