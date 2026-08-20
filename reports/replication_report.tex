@@ -255,7 +255,7 @@ an error in the firm-level accounting pull should hit both ratios roughly
 equally, while an error specific to the book-equity \emph{formula} should
 hit only \(B/M\) -- pointed to deferred taxes (\(\text{TXDITC}\)), which
 make up 12.1\% of our aggregate book equity under the standard
-Fama-French definition. Excluding them brings the mean to 52.08, within
+Fama-French definition. Excluding them brings the mean to 52.13, within
 2\% of the paper, though a residual gap of roughly 5\% remains in both
 ratios, attributable to the paper's unspecified ``three years of accounting
 history'' screen and 20+ years of subsequent Compustat data restatement.
@@ -331,7 +331,7 @@ still be visible here.}
 Splitting the extension at 2001 is more interesting, and is not a
 counterexample to the paper. Dividend yield's autocorrelation falls to
 \(\ExtRecentRhoHat\) in the post-2000 subsample, below the paper's own
-stated threshold (Section 2.4) of roughly 0.99 for a 25-year monthly sample
+stated threshold (Section 2.4) of roughly \RhoThreshold{} for a 25-year monthly sample
 -- and the conditional test's power collapses accordingly: \(\hat b =
 \ExtRecentRhoOneB\) (\(t = \ExtRecentRhoOneT\), \(p = \ExtRecentRhoOneP\)),
 even as OLS reports \(\hat b = \ExtRecentOLSb\) (\(p = \ExtRecentOLSp\)).
@@ -402,11 +402,16 @@ decade, and sharpens it. Rather than reporting where a rolling 25-year
 \(\hat\rho\) for \(\log(DY)\) first happens to dip below the paper's own
 power threshold -- a framing sensitive to whichever window is earliest and
 noisiest, and not informative on its own -- the series has a clear shape:
-it \textbf{peaks at \(\RhoPeakValue\) in \(\RhoPeakYear\), essentially
-exactly where Lewellen's own sample ends}, and has eroded steadily since,
+it \textbf{peaks at \(\RhoPeakValue\) in \(\RhoPeakYear\), within the
+closing years of Lewellen's own sample}, and has eroded steadily since,
 to \(\RhoCurrentValue\) as of \(\RhoCurrentYear\). The conditions the
 \(\rho \approx 1\) conditional test needs were at their most favorable
-precisely when the paper was written, and have been weakening ever since.
+around the time the paper was written, and have been weakening ever since.
+(A sample estimate above one is not a contradiction of the stationarity
+assumption the test relies on: \(\hat\rho\) is an unbounded OLS slope, and
+a near-unit-root process routinely yields \(\hat\rho > 1\) in a finite
+sample even when the true \(\rho\) is below one. The paper's own Table~1
+reports \(\rho_{24} = 1.062\) for \(\log(DY)\) for the same reason.)
 (For reference, the series first dips below the \RhoThreshold{} threshold
 around \RhoFirstCrossYear{}, but that single crossing is a much weaker
 claim than the peak-to-current trajectory -- the series recrosses the
@@ -420,10 +425,12 @@ that point.)
 \caption{Rolling 25-year autocorrelation of \(\log(DY)\), 1946--2025 (CIZ
 panel), against the paper's own power threshold for a window of that length
 (Section 2.4). Persistence peaks at \(\RhoPeakValue\) in \(\RhoPeakYear\) --
-almost exactly where the paper's own 1946--2000 sample ends -- and has
+within the closing years of the paper's own 1946--2000 sample -- and has
 declined since to \(\RhoCurrentValue\) by \(\RhoCurrentYear\), its lowest
 sustained level in the post-1946 sample: the conditions the conditional
-test depends on were most favorable right when Lewellen was writing.}
+test depends on were most favorable around the time Lewellen was writing.
+The peak exceeding one reflects finite-sample variation in an unbounded
+estimator, not a violation of stationarity.}
 \label{fig:own-rho}
 \end{figure}
 
