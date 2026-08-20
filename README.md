@@ -1,278 +1,147 @@
-# Lewellen (2004) Replication — "Predicting Returns with Financial Ratios"
+# Replicating Lewellen (2004)
 
-Replication of Lewellen, J. (2004), *Journal of Financial Economics* 74(2): 209–235.
-Companion project to a Stambaugh (1999) replication — same underlying data, opposing
-conclusions about return predictability.
+Replication and extension of Jonathan Lewellen, *"Predicting returns with financial
+ratios,"* **Journal of Financial Economics** 74(2): 209–235.
 
-This README is organized as a set of issues, in the order they should be worked.
-Each issue lists scope, dependencies, and a rough "done" bar.
+Anthony Mazy and Stefano Ramponi · FINM 32900
 
 ---
 
-## Issue 1 — Data wrangling & cleaning
+## What the paper claims
 
-**Goal:** produce one clean monthly panel that everything downstream reads from.
+Regress next month's market return on this month's dividend yield and the slope is
+positive — but the yield's innovations are almost perfectly negatively correlated
+with return innovations, because a price rise raises the return and mechanically
+lowers the yield in the same month. Stambaugh (1986, 1999) showed this biases the
+slope upward in small samples, and the standard correction removes most of the
+apparent predictability.
 
-- [ ] Pull monthly NYSE value-weighted (VW) and equal-weighted (EW) returns, both
-      *including* and *excluding* dividends, from the Ken French Data Library
-      (or CRSP directly if WRDS access is available)
-- [ ] Pull the one-month T-bill rate (French Library `RF`, or CRSP risk-free file)
-- [ ] Pull CPI from FRED (`CPIAUCSL`) for real returns
-- [ ] Construct the dividend flow: `Div_t ≈ (VWretd_t − VWretx_t) × Index_{t-1}`;
-      roll to trailing 12 months; divide by current index level → `DY_t`; take logs
-- [ ] Construct excess and real returns for VW and EW
-- [ ] **[Compustat-dependent]** Construct aggregate B/M and E/P for NYSE firms:
-  - sum book equity / operating income (before depreciation) across Compustat-covered
-    NYSE firms with ≥3 years of history
-  - lag accounting data 4 months
-  - divide by contemporaneous NYSE VW market equity; take logs
-  - if no WRDS/Compustat access: build an approximate version from Ken French's
-    25 Size–BE/ME portfolios and **flag it explicitly as an approximation**, not a
-    true aggregate NYSE ratio
-- [ ] Assemble master panel: `date, VWNY, EWNY, ExcVWNY, ExcEWNY, DY, logDY, B/M,
-      logB/M, E/P, logE/P`, monthly, 1946–present (pull from 1926 if useful for
-      pre-sample checks)
-- [ ] **QA gate:** reproduce Table 1 (mean, SD, skew, ρ₁, ρ₁₂, ρ₂₄) for full sample
-      and both halves; do not proceed to Issue 2 until these match the paper within
-      rounding
+Lewellen's contribution is that the standard correction discards something known for
+free: a dividend yield cannot explode, so its autocorrelation ρ must be below 1.
+Conditioning on that bound rather than integrating over every possible ρ gives a
+tighter estimator — and flips the conclusion back to "returns are predictable."
 
-**Depends on:** nothing (this is the foundation)
-**Blocks:** everything else
+## What we did
+
+- **Replicated** Tables 1–6 on CRSP and Compustat data, with unit tests asserting our
+  numbers against the paper's published values within stated tolerances
+- **Extended** the sample from the paper's 2000 cutoff through 2025
+- **Added** our own exhibit: dividend yield's persistence peaked right around when the
+  paper was written and has eroded since, so the condition the method depends on is
+  weaker today than in any window Lewellen could observe
+
+Findings, including where our numbers diverge and why, are in
+[`reports/replication_report.tex`](reports/replication_report.tex) (build it below) and
+in [ISSUE1.md](ISSUE1.md) / [ISSUE2.md](ISSUE2.md).
 
 ---
 
-## Issue 2 — Core replication
+## Running it
 
-**Goal:** implement the three estimators and reproduce the paper's main tables.
-Broken into sub-issues per table so data and model dependencies are explicit and
-each table can be picked up/tested independently once Issue 1 is done.
+Requires a WRDS account with CRSP and Compustat access.
 
-**Depends on:** Issue 1
-**Blocks:** Issues 3–5
+```bash
+conda env create -f environment.yml
+conda activate financial-ratios
 
----
+cp .env.example .env          # then set WRDS_USERNAME
+doit
+```
 
-### Issue 2.0 — Shared estimator library
+`doit` runs the whole pipeline: pulls both CRSP panels, builds every table, runs the
+test suite. Add the presentation layer with:
 
-The three estimators are reused across every table below; build once, test against
-the paper's full-sample VWNY numbers, then treat as a dependency for 2.1–2.5.
+```bash
+doit exhibits schema_compare_macros run_notebooks compile_latex_docs
+```
 
-- [ ] **OLS** — standard predictive regression `r_t = a + b·x_{t-1} + e_t` — benchmark
-      only, not bias-adjusted
-- [ ] **Stambaugh (1999) bias-adjusted estimator** — AR(1) for `x_t`, analytic
-      small-sample distribution (preferred) or Monte Carlo calibrated to `(ρ̂, Σ̂)`
-      as fallback
-- [ ] **ρ≈1 conditional estimator** — `b̂_adj = b̂ - ĝ(ρ̂-1)` where
-      `ĝ = cov(ê,m̂)/var(m̂)` from the auxiliary regression `e_t = g·m_t + n_t`
-      (paper's Appendix A.1); test statistic is exact Student-t(T-3) under the null
-- [ ] **Modified Bonferroni joint p-value**: `min(2P, P+D)`, `D` = p-value for
-      testing `ρ=1`
-- [ ] Unit test: full-sample nominal VWNY, 1946–2000 →
-      OLS b=0.92 (SE 0.48), Stambaugh b=0.20/p=0.308, ρ≈1 b=0.66/p=0.000 (Table 2)
+Your WRDS **password is never read by this project** — the `wrds` client resolves it
+from `~/.pgpass` (on Windows, `%APPDATA%/postgresql/pgpass.conf`). Set it up once with
+`python -c "import wrds; wrds.Connection()"` and answer the prompt.
 
-**Data used:** none directly — this is pure estimator code, tested against
-Issue 1's DY panel restricted to the VWNY/1946–2000 slice.
+Without WRDS you can still run everything that doesn't need a pull: `doit test`
+(the suite skips the data-dependent assertions), and `python run_issue1.py
+--source synthetic` builds an offline panel that exercises the pipeline without
+producing real numbers.
 
----
+### Useful tasks
 
-### Issue 2.1 — Table 1: summary statistics
+| task | what it does |
+|---|---|
+| `doit` | the full chain: both panels, all tables, tests |
+| `doit panel_siz` / `panel_ciz` | pull one CRSP panel |
+| `doit test` | test suite (`test_all` includes the slow Monte Carlo tests) |
+| `doit exhibits` | our own summary table and figure |
+| `doit compile_latex_docs` | build the report PDF |
+| `doit run_notebooks` | execute the walkthrough, export HTML |
+| `doit dashboard` | launch the interactive ρ dashboard |
+| `doit list` | everything available |
 
-- [ ] Compute mean, SD, skewness, and autocorrelations (ρ₁, ρ₁₂, ρ₂₄) for VWNY,
-      EWNY, DY, log(DY) — full sample 1946–2000 and both halves (1946–72, 1973–2000)
-- [ ] Same for B/M, log(B/M), E/P, log(E/P) — Compustat era, 1963–2000
-
-**Data used:** VW/EW NYSE returns, DY (from Issue 1's CRSP/French-Library
-construction); B/M and E/P (from Issue 1's Compustat aggregate construction, or
-flagged approximation)
-**Model used:** none — descriptive statistics only (this is the QA gate before
-Issue 2.2 onward)
-
----
-
-### Issue 2.2 — Table 2: dividend yield, full sample 1946–2000
-
-- [ ] AR(1) regression: `log(DY_t) = f + ρ·log(DY_{t-1}) + m_t`
-- [ ] Predictive regressions of nominal VWNY, nominal EWNY, excess VWNY, excess
-      EWNY on lagged log(DY), each under OLS / Stambaugh / ρ≈1
-
-**Data used:** VW/EW NYSE returns (nominal and excess, i.e. net of the one-month
-T-bill), log(DY) — all from Issue 1, sample restricted to Jan 1946–Dec 2000 (660
-months)
-**Model used:** shared estimator library (Issue 2.0), applied to the single-regressor
-log(DY) specification
+Configuration — data directories, sample dates, simulation count — lives in
+[`src/settings.py`](src/settings.py) with every key documented in
+[`.env.example`](.env.example). Resolution order is CLI > environment > `.env` >
+default.
 
 ---
 
-### Issue 2.3 — Table 3: dividend yield, subsamples
+## Where things are
 
-- [ ] Repeat the Table 2 regressions (AR(1) + OLS/Stambaugh/ρ≈1) separately for
-      Jan 1946–Dec 1972 (324 months) and Jan 1973–Dec 2000 (336 months)
+```
+run_issue1.py       orchestrates the data pull and QA gate
+dodo.py             the build; every task above is defined here
 
-**Data used:** same series as Issue 2.2, split at Dec 1972
-**Model used:** shared estimator library (Issue 2.0) — no new estimator work, purely
-a sample-filtering exercise once Issue 2.2 is done
+src/
+  settings.py               configuration
+  wrds_pull.py              CRSP and Compustat queries (SIZ and CIZ schemas)
+  construct_panel.py        cleaning only — produces the tidy panel
+  qa_table1.py              QA gate against the paper's Table 1
+  estimators.py             OLS, Stambaugh, rho~1, modified Bonferroni
+  replicate_paper_tables.py Tables 2-6 and the extension windows
+  paper_values.py           the paper's published values + tolerance rationale
+  analysis.py               our own exhibits
+  dashboard.py              interactive rho dashboard
+  02_walkthrough.ipynb.py   guided tour of the data and the analysis
 
----
+tests/              unit tests, including the assertions against the paper
+reports/            LaTeX write-up
+_data/, _output/    generated — gitignored, and never committed
+```
 
-### Issue 2.4 — Table 4: sensitivity to 1995–2000
+CRSP and Compustat are licensed, so **no pulled data is in this repository**.
+Everything under `_data/` and `_output/` is reproducible from `doit`.
 
-- [ ] Repeat the Table 2 regressions for Jan 1946–Dec 1994 (588 months) and compare
-      directly to the Jan 1946–Dec 2000 results from Issue 2.2
-- [ ] Report the change in `ρ̂` and the implied change in `ĝ(ρ̂-1)` (the "realized
-      bias") between the two samples — this is the number that explains why the
-      conditional test is stable while OLS/Stambaugh are not
+### Start here
 
-**Data used:** same VWNY/EWNY/log(DY) series as Issue 2.2, truncated at Dec 1994
-**Model used:** shared estimator library (Issue 2.0); no new estimator work
-
----
-
-### Issue 2.5 — Table 5 or 6: book-to-market or earnings-price ratio
-
-- [ ] Pick B/M (Table 5) or E/P (Table 6) — recommend B/M first since it needs only
-      book equity, not the operating-earnings line
-- [ ] AR(1) regression for log(B/M) or log(E/P)
-- [ ] Predictive regressions of nominal/excess VWNY/EWNY on the lagged log ratio,
-      OLS / Stambaugh / ρ≈1, for June 1963–Dec 1994 (379 months) and June
-      1963–Dec 2000 (451 months)
-
-**Data used:** aggregate B/M or E/P from Issue 1's Compustat construction (or
-flagged French-Library-portfolio approximation), plus VW/EW NYSE returns
-**Model used:** shared estimator library (Issue 2.0), applied to the log(B/M) or
-log(E/P) specification — identical mechanics to Table 2, different regressor
+New to the project? Read
+[`src/02_walkthrough.ipynb.py`](src/02_walkthrough.ipynb.py) — a guided tour of the
+panel, the correlation that causes the bias, and the three estimators side by side.
+`doit run_notebooks` renders it to HTML.
 
 ---
 
-### Issue 2.6 — *(Optional)* Appendix: power simulation (Table A.1 / Fig. A.1)
+## Notes on the data
 
-- [ ] Monte Carlo simulation calibrated to the 1946–1972 VWNY/log(DY) OLS estimates,
-      varying `b` ∈ {0, 0.4, 0.8, 1.2, 1.6} and `ρ` ∈ {0.999, …, 0.975}
-- [ ] Rejection rates at 5% for Stambaugh, ρ≈1, and the joint Bonferroni test
+Two CRSP panels, deliberately. The legacy **SIZ** tables stopped being updated after
+2024-12-31; the current **CIZ** schema reaches the present but compounds returns
+differently. We replicate on SIZ, whose convention is closer to the data Lewellen
+used, and extend on CIZ. Both are built rather than spliced, and the two agree on
+every inference — see ISSUE2.md.
 
-**Data used:** none — pure simulation, parameters taken from Table 3's reported OLS
-estimates for VWNY 1946–1972
-**Model used:** shared estimator library (Issue 2.0), run on simulated rather than
-real data — primarily a correctness check on the estimator code, not a replication
-deliverable per se
+Book equity is `CEQ − preferred stock`, excluding deferred taxes. The paper never
+states its formula, and including deferred taxes puts our aggregate B/M about 10%
+above the published mean. The choice is a flag
+(`pull_compustat_be_and_earnings(include_deferred_taxes=...)`) rather than a
+hard-coded constant.
 
----
+Scaffolded from
+[cookiecutter_chartbook](https://github.com/backofficedev/cookiecutter_chartbook)
+via `cruft`; `cruft check` reports the link is current.
 
-## Issue 3 — Extension: extend the sample to the present
+## Division of work
 
-**Goal:** rerun Tables 1 and 2 (and ideally 3) through the most recent available month.
+| | |
+|---|---|
+| **Stefano Ramponi** | data pipeline (Issue 1), estimator library and paper tables (Issue 2), interactive dashboard, LaTeX report |
+| **Anthony Mazy** | replication tests against published values, autocorrelation-estimator fix, CIZ schema port, sample extension, environment and build automation, walkthrough notebook |
 
-- [ ] Extend the master panel from 2000 through present (~2026) using the same
-      construction as Issue 1
-- [ ] Re-run Table 1 summary stats for the extended sample and a natural third
-      subperiod (e.g., 2001–present)
-- [ ] Re-run Table 2 (and Table 3, time permitting) on the extended sample
-- [ ] Report how `ρ̂` (autocorrelation of log DY) has evolved since 2000 — this is
-      the single number the paper's whole argument hinges on, so it's worth
-      tracking explicitly
-- [ ] Note regime-relevant events for interpretation: 2008 financial crisis,
-      near-zero rate era (2009–2021), 2020 COVID crash/recovery, 2022 rate-hiking
-      cycle, and the general rise of buybacks over dividends
-- [ ] Write up: does dividend yield still predict returns out to today, and does
-      the conditional test still dominate the unconditional one?
-
-**Depends on:** Issues 1–2
-
----
-
-## Issue 4 — Extension: interactive educational dashboard
-
-**Goal:** a teaching tool that makes the paper's core argument tangible, centered on
-a **Bayesian dial for ρ**.
-
-- [ ] Dashboard shell showing, for a selected ratio (DY / B/M / E/P) and sample
-      window: current level, `ρ̂`, and OLS / Stambaugh / ρ≈1 estimates + p-values
-      side by side
-- [ ] **Bayesian ρ dial** (core feature): a slider/control over the assumed prior
-      for ρ, spanning at least:
-  - point mass at ρ=1 (recreates the paper's conditional test exactly)
-  - flat prior on ρ≤1
-  - shifted-normal prior centered near ρ̂ with user-adjustable spread
-  - live-updating posterior probability that b≤0, recreating the paper's own
-    worked example (Section 4.1: 0.147 → 0.017 → 0.032 for nominal EWNY, 1946–72)
-- [ ] Live "does the conditional test have power right now?" indicator — flags
-      whether current `ρ̂` clears the paper's own rule-of-thumb threshold
-      (≈0.98 monthly / 0.85 annual with 25 years of data; ≈0.99/0.90 with 50 years)
-- [ ] Panel showing the 1995–2000-style sensitivity check: how much do OLS,
-      Stambaugh, and ρ≈1 estimates move if you drop the last N years of data?
-- [ ] *(Stretch)* small embedded version of the Table A.1 / Fig. A.1 power
-      simulation, letting the user vary `b`, `ρ`, `T` and see rejection rates update
-
-**Depends on:** Issues 1–3 (needs the full historical + extended panel and all
-three estimators already working)
-
----
-
-## Issue 5 — Extension: ML / alternative predictive model *(optional)*
-
-**Goal:** stress-test whether a more flexible model changes the predictability
-conclusion — lower priority, pursue only if time allows after Issues 1–4.
-
-- [ ] Define an out-of-sample evaluation protocol (expanding or rolling window,
-      historical-mean benchmark à la Goyal-Welch) — the paper is entirely in-sample,
-      so this is the main gap an ML extension would fill
-- [ ] Baseline: out-of-sample R² for OLS and ρ≈1-adjusted forecasts vs. the
-      historical mean
-- [ ] Candidate alternative model(s) — pick one or two, not all:
-  - regularized linear (ridge/lasso) combining DY, B/M, E/P jointly instead of
-    one-at-a-time
-  - simple nonlinear model (e.g., random forest / gradient boosting) on the same
-    predictors, primarily to check for nonlinearity/interaction effects rather than
-    to chase raw predictive accuracy
-- [ ] Compare in-sample significance (paper's framework) against out-of-sample
-      performance (ML framework) — the interesting result either way is the
-      *disagreement*, not just accuracy numbers
-- [ ] Write up honestly: this is exploratory and secondary to the main replication;
-      frame conclusions accordingly given known low signal-to-noise in return
-      prediction
-
-**Depends on:** Issues 1–3
-
----
-
-## Issue 6 — Extension: cross-sectional application to other markets *(optional)*
-
-**Goal:** test whether the paper's central claim — that the ρ≈1 conditional test
-dominates Stambaugh's unconditional test whenever the predictor's autocorrelation is
-close to one — generalizes outside NYSE/CRSP data, or is a US-specific artifact.
-
-- [ ] Select a small set of non-US developed markets with long, clean dividend-yield
-      histories (e.g., UK, Japan, Germany — MSCI or Datastream country indices;
-      Global Financial Data is a paid alternative with longer history)
-- [ ] Construct market-level DY (and B/M/E/P if data allows) for each market using
-      the same trailing-12-month construction as Issue 1
-- [ ] Report `ρ̂` per market first — this determines up front whether the conditional
-      test can even be informative there (per the paper's own rule of thumb), before
-      running any regressions
-- [ ] Run the same three estimators (Issue 2.0 library — no new estimator code
-      needed) market-by-market
-- [ ] Compare: does the conditional test's power advantage over Stambaugh hold
-      cross-market, or is it concentrated in markets/periods with unusually
-      persistent dividend yields?
-- [ ] *(Stretch)* pool markets into a panel version of the test, flagging that
-      cross-sectional correlation of returns (not addressed in the original paper)
-      would need its own treatment if pursued rigorously
-
-**Data used:** MSCI/Datastream (or equivalent) country-level total- and price-return
-indices for market-level dividend yield construction; local short-term rates for
-excess returns where available
-**Model used:** shared estimator library (Issue 2.0) — no new estimator work, applied
-market-by-market; this is a data-acquisition and interpretation exercise more than a
-modeling one
-**Depends on:** Issue 2.0 (estimator library); independent of Issues 3–5
-
----
-
-## Suggested order of work
-
-1. Issue 1 (data) → QA gate on Table 1
-2. Issue 2 (replication) → QA gate on Table 2 headline numbers
-3. Issue 3 (extend sample) — cheap once 1–2 are solid
-4. Issue 4 (dashboard) — the main deliverable beyond replication
-5. Issue 5 (ML) — only if time remains
-6. Issue 6 (cross-market) — only if time remains; can run in parallel with Issue 5
-   since both depend only on Issue 2.0, not on each other
+Both worked across the whole project; the split above is where each led.
