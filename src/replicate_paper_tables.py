@@ -14,7 +14,7 @@ against the real, QA-gated master panel from Issue 1, reproducing:
 
 Per instruction: no year exclusion is applied to the B/M or E/P samples --
 the full 1963-2000 window is used as-is, including the 1963-1966 period
-whose data characteristics are documented in docs/ISSUE1.md (not excluded,
+whose data characteristics are documented in ISSUE1.md (not excluded,
 just noted).
 
 Usage:

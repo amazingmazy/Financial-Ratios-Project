@@ -332,7 +332,7 @@ def task_exhibits():
     Runs on the CIZ panel specifically, not SIZ -- the whole point is to look
     at log(DY)'s persistence past the paper's 2000 cutoff, and SIZ does not
     reach past 2024. Depends on estimators.py and dashboard_data.py, since
-    own_analysis.py calls fit_ar1 and power_threshold from them rather than
+    analysis.py calls fit_ar1 and power_threshold from them rather than
     duplicating that logic.
     """
     script = SRC / "analysis.py"
