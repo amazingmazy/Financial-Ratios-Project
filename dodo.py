@@ -214,6 +214,17 @@ notebook_tasks = {
         "file_dep": [],
         "targets": [],
     },
+    # The guided tour of the panel and the estimators (rubric item 2). It reads
+    # both panels and imports the estimator modules, so it is declared against
+    # them: editing estimators.py re-executes the notebook, and a missing panel
+    # makes doit build one rather than letting the notebook fail mid-execution
+    # with a FileNotFoundError.
+    "02_walkthrough.ipynb": {
+        "path": SRC / "02_walkthrough.ipynb.py",
+        "file_dep": [PANEL_SIZ, PANEL_CIZ, SRC / "estimators.py",
+                     SRC / "paper_values.py", SRC / "qa_table1.py"],
+        "targets": [],
+    },
 }
 
 
@@ -226,9 +237,8 @@ def task_run_notebooks():
             "name": name,
             "actions": [
                 f'"{PY}" -m jupytext --to notebook --output "{nb}" "{pyfile}"',
-                f'"{PY}" -m jupyter nbconvert --execute --to notebook '
-                f'--ClearMetadataPreprocessor.enabled=True --inplace "{nb}"',
-                f'"{PY}" -m jupyter nbconvert --to html --output-dir "{OUTPUT_DIR}" "{nb}"',
+                f'"{PY}" -m nbconvert --execute --to notebook --inplace "{nb}"',
+                f'"{PY}" -m nbconvert --to html --output-dir "{OUTPUT_DIR}" "{nb}"',
             ],
             "file_dep": [pyfile, *spec["file_dep"]],
             "targets": [OUTPUT_DIR / f"{nb.stem}.html", *spec["targets"]],
