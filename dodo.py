@@ -52,6 +52,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from settings import config  # noqa: E402
 
+try:
+    _wrds_username = config("WRDS_USERNAME")
+except Exception:
+    _wrds_username = None
+if _wrds_username:
+    os.environ.setdefault("WRDS_USERNAME", _wrds_username)
+
 BASE_DIR = config("BASE_DIR")
 DATA_DIR = config("DATA_DIR")
 OUTPUT_DIR = config("OUTPUT_DIR")
@@ -60,8 +67,22 @@ REPORTS = BASE_DIR / "reports"
 
 PY = sys.executable  # the interpreter running doit, so the env is never ambiguous
 
-START_DATE = config("START_DATE").strftime("%Y-%m-%d")
-SIZ_END_DATE = config("SIZ_END_DATE").strftime("%Y-%m-%d")
+def _as_date_str(value):
+    """Normalise a config date to the YYYY-MM-DD string the CLI tasks need.
+
+    `config()` is not type-stable for these keys: it returns a `datetime` when
+    the value falls through to the `settings.py` default, but a `str` when it
+    comes from an environment variable or `.env`. So neither `.strftime()` nor
+    `strptime()` is correct on its own -- each works in one configuration and
+    raises in the other, which is why this line has been fixed twice and broken
+    twice. Accepting both is the only form that survives a clean clone *and* a
+    populated `.env`.
+    """
+    return value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else str(value)
+
+
+START_DATE = _as_date_str(config("START_DATE"))
+SIZ_END_DATE = _as_date_str(config("SIZ_END_DATE"))
 N_SIMS = config("N_SIMS")
 
 PANEL_SIZ = DATA_DIR / "master_panel.csv"
@@ -154,15 +175,36 @@ def task_panel_ciz():
     }
 
 
+# Names replicate_paper_tables.py writes one .tex fragment per, whenever run
+# with --extended (which _tables_task always does). Kept as an explicit list
+# rather than a glob so a silently-missing table fails the build instead of
+# being missed.
+REPLICATION_TABLE_NAMES = [
+    "table2", "table3a", "table3b", "table4a", "table4b",
+    "table5a", "table5b", "table6a", "table6b",
+    "table_ext_1946", "table_ext_2001",
+]
+
+# Subset that also gets a macros_<name>_<tag>.tex written (see main() and
+# run_extended() in replicate_paper_tables.py) -- these are the tables whose
+# specific numbers the report's prose quotes by name, not all 11.
+MACRO_TABLE_NAMES = ["table2", "table_ext_1946", "table_ext_2001"]
+
+
 def _tables_task(tag, panel, extra_args=""):
-    target = OUTPUT_DIR / f"issue2_tables_2_3_4_5_6_extended_{tag}.csv"
+    csv_target = OUTPUT_DIR / f"issue2_tables_2_3_4_5_6_extended_{tag}.csv"
+    tex_targets = [OUTPUT_DIR / f"{name}_{tag}.tex" for name in REPLICATION_TABLE_NAMES]
+    # Every macro-bearing table also gets a matching macros_<name>_<tag>.tex,
+    # from the same run, so a table and the prose macros describing it can
+    # never disagree.
+    macro_targets = [OUTPUT_DIR / f"macros_{name}_{tag}.tex" for name in MACRO_TABLE_NAMES]
     return {
         "actions": [
             f'"{PY}" "{SRC / "replicate_paper_tables.py"}" "{panel}" '
             f"--extended --tag {tag} --n-sims {N_SIMS} {extra_args}".strip()
         ],
         "file_dep": TABLE_DEPS + [panel],
-        "targets": [target],
+        "targets": [csv_target] + tex_targets + macro_targets,
         "clean": True,
     }
 
@@ -185,6 +227,28 @@ def task_tables_ciz2024():
     the schema.
     """
     return _tables_task("ciz2024", PANEL_CIZ, f"--end {SIZ_END_DATE}")
+
+
+def task_schema_compare_macros():
+    """Emit the SIZ-vs-CIZ2024 corr(e,m) macros for the Extension section's
+    schema-robustness paragraph.
+
+    Reads the combined CSVs tables_siz and tables_ciz2024 already produce,
+    rather than recomputing -- this is a pure re-export of two numbers that
+    already exist, so the schema-comparison sentence can't disagree with the
+    two runs that back it.
+    """
+    script = SRC / "schema_compare_macros.py"
+    siz_csv = OUTPUT_DIR / "issue2_tables_2_3_4_5_6_extended_siz.csv"
+    ciz2024_csv = OUTPUT_DIR / "issue2_tables_2_3_4_5_6_extended_ciz2024.csv"
+    target = OUTPUT_DIR / "macros_schema_compare.tex"
+    return {
+        "actions": [f'"{PY}" "{script}" "{siz_csv}" "{ciz2024_csv}" "{target}"'],
+        "file_dep": [script, SRC / "replicate_paper_tables.py", siz_csv, ciz2024_csv],
+        "task_dep": ["tables_siz", "tables_ciz2024"],
+        "targets": [target],
+        "clean": True,
+    }
 
 
 def task_test():
@@ -262,6 +326,29 @@ def task_generated_tables():
     }
 
 
+def task_exhibits():
+    """Build our own summary table and figure (rubric item 5).
+
+    Runs on the CIZ panel specifically, not SIZ -- the whole point is to look
+    at log(DY)'s persistence past the paper's 2000 cutoff, and SIZ does not
+    reach past 2024. Depends on estimators.py and dashboard_data.py, since
+    own_analysis.py calls fit_ar1 and power_threshold from them rather than
+    duplicating that logic.
+    """
+    script = SRC / "analysis.py"
+    return {
+        "actions": [f'"{PY}" "{script}" "{PANEL_CIZ}"'],
+        "file_dep": [script, PANEL_CIZ, SRC / "estimators.py", SRC / "dashboard_data.py",
+                     SRC / "replicate_paper_tables.py"],
+        "targets": [
+            OUTPUT_DIR / "own_summary_table.tex",
+            OUTPUT_DIR / "own_rho_evolution.png",
+            OUTPUT_DIR / "macros_own_exhibits.tex",
+        ],
+        "clean": True,
+    }
+
+
 def task_compile_latex_docs():
     """Compile the write-up to PDF with latexmk (xelatex).
 
@@ -279,13 +366,38 @@ def task_compile_latex_docs():
     this project does not use FRED for its exhibits.
     """
     tex = REPORTS / "replication_report.tex"
+    replication_tables = [OUTPUT_DIR / f"{name}_siz.tex" for name in REPLICATION_TABLE_NAMES
+                           if name not in ("table_ext_1946", "table_ext_2001")]
+    # Extension tables specifically need CIZ, not SIZ: SIZ stops at 2024-12-31
+    # and cannot produce the 1946-2025 / 2001-2025 windows the Extension
+    # section's prose describes (see ISSUE2.md, "Known gaps: legacy CRSP
+    # tables are frozen at 2024"). Using the _siz-tagged version here would
+    # silently show a different, shorter window than the text next to it.
+    extension_tables = [OUTPUT_DIR / f"{name}_ciz.tex" for name in ("table_ext_1946", "table_ext_2001")]
+    # Prose macros mirror the same siz/ciz split as their matching tables --
+    # \TableTwoOurs* from the siz run, \ExtFull*/\ExtRecent* from the ciz run,
+    # so a macro is always sourced from the same run as the table it appears
+    # next to.
+    macros = [
+        OUTPUT_DIR / "macros_table2_siz.tex",
+        OUTPUT_DIR / "macros_table_ext_1946_ciz.tex",
+        OUTPUT_DIR / "macros_table_ext_2001_ciz.tex",
+        OUTPUT_DIR / "macros_schema_compare.tex",
+        OUTPUT_DIR / "macros_own_exhibits.tex",
+    ]
     return {
         "actions": [
             f'latexmk -xelatex -halt-on-error -cd "{tex}"',
             f'latexmk -xelatex -halt-on-error -c -cd "{tex}"',  # clean aux files
         ],
-        "file_dep": [tex, OUTPUT_DIR / "pandas_to_latex_simple_table1.tex"],
-        "task_dep": ["generated_tables"],
+        "file_dep": [
+            tex,
+            OUTPUT_DIR / "pandas_to_latex_simple_table1.tex",
+            OUTPUT_DIR / "own_summary_table.tex",
+            OUTPUT_DIR / "own_rho_evolution.png",
+        ] + replication_tables + extension_tables + macros,
+        "task_dep": ["generated_tables", "exhibits", "tables_siz", "tables_ciz",
+                      "tables_ciz2024", "schema_compare_macros"],
         "targets": [REPORTS / "replication_report.pdf"],
         "clean": True,
     }

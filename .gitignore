@@ -261,3 +261,8 @@ src/*.ipynb
 # .env may contain a WRDS username; the example is the only version tracked
 .env*
 !.env.example
+
+# Output
+output/*.png
+output/*.tex
+output/*.html

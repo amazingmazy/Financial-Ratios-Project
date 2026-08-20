@@ -113,10 +113,115 @@ def print_paper_style(table: pd.DataFrame, title: str):
 
 
 # --------------------------------------------------------------------------
+# LaTeX formatting (rows = estimator, columns = series) -- same layout as
+# print_paper_style, so the console output and the report table always tell
+# the same story. Written to _output/ as bare-tabular fragments, meant to be
+# \input{} inside a \table environment in the report (rubric item 7: every
+# statistic in the report must be auto-generated from code, not hand-typed).
+# --------------------------------------------------------------------------
+
+def write_table_tex(table: pd.DataFrame) -> str:
+    """Render one table as a booktabs LaTeX tabular fragment (no \\table
+    wrapper or caption -- those belong in the report, next to the \\input,
+    since the caption is prose describing the table, not data the pipeline
+    produces)."""
+    if table.empty:
+        return "% (no series had enough data in this window)\n"
+
+    series_list = table["series"].tolist()
+    colspec = "l" + "c" * len(series_list)
+    lines = [f"\\begin{{tabular}}{{{colspec}}}", "\\toprule"]
+    lines.append(" & " + " & ".join(series_list) + r" \\")
+    lines.append("\\midrule")
+
+    def row(label: str, values, fmt: str = "{:.4f}") -> str:
+        return f"{label} & " + " & ".join(fmt.format(v) for v in values) + r" \\"
+
+    lines.append(row("$T$", table["T"], fmt="{:.0f}"))
+    lines.append(row(r"AR(1) $\hat\rho$", table["rho_hat"]))
+    lines.append(row(r"corr($e,m$)", table["corr_em"]))
+    lines.append("\\midrule")
+
+    for est_label, bcol, secol, pcol in [
+        ("OLS", "OLS_b", "OLS_se", "OLS_p"),
+        ("Stambaugh", "Stambaugh_b", "Stambaugh_se", "Stambaugh_p"),
+        (r"$\rho\approx1$", "rho1_b", "rho1_se", "rho1_p"),
+    ]:
+        b_vals = " & ".join(f"{v:.4f}" for v in table[bcol])
+        se_vals = " & ".join(f"({v:.4f})" for v in table[secol])
+        p_vals = " & ".join(f"$p={v:.3f}$" for v in table[pcol])
+        lines.append(f"{est_label} $\\hat b$ & {b_vals} \\\\")
+        lines.append(f" & {se_vals} \\\\")
+        lines.append(f" & {p_vals} \\\\")
+
+    lines.append("\\midrule")
+    lines.append(row("Joint $p$", table["joint_p"]))
+    lines.append("\\bottomrule")
+    lines.append("\\end{tabular}")
+    return "\n".join(lines) + "\n"
+
+
+def write_table_tex_file(table: pd.DataFrame, out_dir: str, name: str) -> str:
+    """Write one table's LaTeX fragment to <out_dir>/<name>.tex and return
+    the path, so callers can log or collect it."""
+    path = os.path.join(out_dir, f"{name}.tex")
+    with open(path, "w") as f:
+        f.write(write_table_tex(table))
+    print(f"wrote {path}")
+    return path
+
+
+# --------------------------------------------------------------------------
+# Prose macros: the same numbers that appear in a table, exported as
+# \newcommand{}s so the report's narrative text can \FooBarB{} instead of
+# typing "0.862" by hand. Prose that quotes a table's own numbers is exactly
+# where hand-typed literals silently go stale (a re-run changes the table,
+# the sentence next to it doesn't) -- pulling from the same row write_table_tex
+# reads makes that class of drift structurally impossible rather than just
+# less likely.
+# --------------------------------------------------------------------------
+
+# \newcommand names must be letters only (no digits, no underscores), so
+# callers pass an already-alphabetic prefix (e.g. "ExtFull", not "Ext1946").
+_MACRO_SUFFIXES = [
+    ("Window", "window", "{}"),
+    ("T", "T", "{:.0f}"),
+    ("RhoHat", "rho_hat", "{:.4f}"),
+    ("CorrEM", "corr_em", "{:.4f}"),
+    ("OLSb", "OLS_b", "{:.4f}"), ("OLSse", "OLS_se", "{:.4f}"), ("OLSp", "OLS_p", "{:.3f}"),
+    ("StambB", "Stambaugh_b", "{:.4f}"), ("StambSe", "Stambaugh_se", "{:.4f}"), ("StambP", "Stambaugh_p", "{:.3f}"),
+    ("RhoOneB", "rho1_b", "{:.4f}"), ("RhoOneSe", "rho1_se", "{:.4f}"),
+    ("RhoOneT", "rho1_t", "{:.2f}"), ("RhoOneP", "rho1_p", "{:.3f}"),
+    ("JointP", "joint_p", "{:.4f}"),
+]
+
+
+def row_macros(table: pd.DataFrame, series: str, prefix: str) -> dict:
+    """One table row (e.g. VWNY) as {macro_name: formatted_value}."""
+    if table.empty or series not in table["series"].values:
+        return {}
+    row = table.loc[table["series"] == series].iloc[0]
+    return {f"{prefix}{suffix}": fmt.format(row[col]) for suffix, col, fmt in _MACRO_SUFFIXES}
+
+
+def write_macros_file(macros: dict, out_dir: str, name: str) -> str:
+    """Write {macro_name: value} as \\newcommand lines to <out_dir>/<name>.tex.
+
+    Uses \\renewcommand-safe \\providecommand so re-\\input-ing (e.g. during a
+    LaTeX compile's second pass) doesn't raise "already defined"."""
+    path = os.path.join(out_dir, f"{name}.tex")
+    lines = [f"\\providecommand{{\\{k}}}{{}}\\renewcommand{{\\{k}}}{{{v}}}" for k, v in macros.items()]
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + ("\n" if lines else "% (no macros: empty table)\n"))
+    print(f"wrote {path}")
+    return path
+
+
+# --------------------------------------------------------------------------
 # Main: Tables 2, 3, 4, 5
 # --------------------------------------------------------------------------
 
-def run_extended(df: pd.DataFrame, n_sims: int) -> list[pd.DataFrame]:
+def run_extended(df: pd.DataFrame, n_sims: int, out_dir: str, tag_suffix: str) -> list[pd.DataFrame]:
     """
     Issue 3: the same regressions carried past the paper's 2000 cutoff.
 
@@ -143,15 +248,18 @@ def run_extended(df: pd.DataFrame, n_sims: int) -> list[pd.DataFrame]:
     end_str = end.strftime("%Y-%m-%d")
     end_lbl = end.strftime("%Y")
     tables = []
+    macro_prefixes = {"table_ext_1946": "ExtFull", "table_ext_2001": "ExtRecent"}
 
-    for start, start_lbl, title in [
-        ("1946-01-01", "1946", "full sample extended to the present"),
-        ("2001-01-01", "2001", "out of sample -- data the paper never saw"),
+    for start, start_lbl, title, name in [
+        ("1946-01-01", "1946", "full sample extended to the present", "table_ext_1946"),
+        ("2001-01-01", "2001", "out of sample -- data the paper never saw", "table_ext_2001"),
     ]:
         t = run_table(df, "logDY", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                       f"{start_lbl}-{end_lbl}", start, end_str, n_sims=n_sims)
         print_paper_style(t, f"EXTENDED — Dividend yield predicts NYSE returns, "
                              f"{start_lbl}-{end_lbl} ({title})")
+        write_table_tex_file(t, out_dir, f"{name}{tag_suffix}")
+        write_macros_file(row_macros(t, "VWNY", macro_prefixes[name]), out_dir, f"macros_{name}{tag_suffix}")
         tables.append(t)
 
     if tables and not tables[-1].empty:
@@ -194,30 +302,37 @@ def main():
         print(f"Panel truncated at {args.end}: {len(df)} months "
               f"({df['date'].min().date()} .. {df['date'].max().date()})\n")
     os.makedirs(args.out_dir, exist_ok=True)
+    tag_suffix = f"_{args.tag}" if args.tag else ""
     all_tables = []
 
     # ---- Table 2: DY, full sample 1946-2000 ----
     t2 = run_table(df, "logDY", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                    "1946-2000", "1946-01-01", "2000-12-31", n_sims=args.n_sims)
     print_paper_style(t2, "TABLE 2 — Dividend yield predicts NYSE returns, 1946-2000")
+    write_table_tex_file(t2, args.out_dir, f"table2{tag_suffix}")
+    write_macros_file(row_macros(t2, "VWNY", "TableTwoOurs"), args.out_dir, f"macros_table2{tag_suffix}")
     all_tables.append(t2)
 
     # ---- Table 3: DY, subsamples ----
     t3a = run_table(df, "logDY", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                      "1946-1972", "1946-01-01", "1972-12-31", n_sims=args.n_sims)
     print_paper_style(t3a, "TABLE 3a — Dividend yield predicts NYSE returns, 1946-1972")
+    write_table_tex_file(t3a, args.out_dir, f"table3a{tag_suffix}")
     t3b = run_table(df, "logDY", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                      "1973-2000", "1973-01-01", "2000-12-31", n_sims=args.n_sims)
     print_paper_style(t3b, "TABLE 3b — Dividend yield predicts NYSE returns, 1973-2000")
+    write_table_tex_file(t3b, args.out_dir, f"table3b{tag_suffix}")
     all_tables += [t3a, t3b]
 
     # ---- Table 4: sensitivity to 1995-2000 (nominal returns only, per the paper) ----
     t4a = run_table(df, "logDY", ["VWNY", "EWNY"],
                      "1946-1994", "1946-01-01", "1994-12-31", n_sims=args.n_sims)
     print_paper_style(t4a, "TABLE 4a — Dividend yield predicts NYSE returns, 1946-1994")
+    write_table_tex_file(t4a, args.out_dir, f"table4a{tag_suffix}")
     t4b = run_table(df, "logDY", ["VWNY", "EWNY"],
                      "1946-2000 (Table 4 comparison)", "1946-01-01", "2000-12-31", n_sims=args.n_sims)
     print_paper_style(t4b, "TABLE 4b — Dividend yield predicts NYSE returns, 1946-2000 (repeated for comparison)")
+    write_table_tex_file(t4b, args.out_dir, f"table4b{tag_suffix}")
     if not t4a.empty and not t4b.empty:
         print("Change in AR(1) rho and OLS slope, 1946-1994 -> 1946-2000:")
         for s in t4a["series"]:
@@ -234,9 +349,11 @@ def main():
     t5a = run_table(df, "logB/M", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                      "1963-1994", "1963-06-01", "1994-12-31", n_sims=args.n_sims)
     print_paper_style(t5a, "TABLE 5a — Book-to-market predicts NYSE returns, 1963-1994")
+    write_table_tex_file(t5a, args.out_dir, f"table5a{tag_suffix}")
     t5b = run_table(df, "logB/M", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                      "1963-2000", "1963-06-01", "2000-12-31", n_sims=args.n_sims)
     print_paper_style(t5b, "TABLE 5b — Book-to-market predicts NYSE returns, 1963-2000")
+    write_table_tex_file(t5b, args.out_dir, f"table5b{tag_suffix}")
     all_tables += [t5a, t5b]
 
     # ---- Table 6: E/P, June 1963-Dec 1994 and June 1963-Dec 2000 ----
@@ -246,13 +363,15 @@ def main():
     t6a = run_table(df, "logE/P", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                      "1963-1994", "1963-06-01", "1994-12-31", n_sims=args.n_sims)
     print_paper_style(t6a, "TABLE 6a — Earnings-price ratio predicts NYSE returns, 1963-1994")
+    write_table_tex_file(t6a, args.out_dir, f"table6a{tag_suffix}")
     t6b = run_table(df, "logE/P", ["VWNY", "EWNY", "ExcVWNY", "ExcEWNY"],
                      "1963-2000", "1963-06-01", "2000-12-31", n_sims=args.n_sims)
     print_paper_style(t6b, "TABLE 6b — Earnings-price ratio predicts NYSE returns, 1963-2000")
+    write_table_tex_file(t6b, args.out_dir, f"table6b{tag_suffix}")
     all_tables += [t6a, t6b]
 
     if args.extended:
-        all_tables += run_extended(df, n_sims=args.n_sims)
+        all_tables += run_extended(df, n_sims=args.n_sims, out_dir=args.out_dir, tag_suffix=tag_suffix)
 
     combined = pd.concat(all_tables, ignore_index=True)
     suffix = f"_{args.tag}" if args.tag else ""

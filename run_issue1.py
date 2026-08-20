@@ -31,7 +31,7 @@ from settings import config
 # defaults); CLI arguments still override them. One place to change a path or a
 # date, and it is the same place the rest of the project reads from.
 DATA_DIR = config("DATA_DIR")
-START_DATE = config("START_DATE").strftime("%Y-%m-%d")
+START_DATE = config("START_DATE")
 
 
 def run_wrds(start: str, end: str | None, compustat: bool, index_source: str = "exchcd_filtered",
