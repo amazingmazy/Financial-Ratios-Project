@@ -48,7 +48,6 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from settings import config  # noqa: E402
@@ -68,8 +67,22 @@ REPORTS = BASE_DIR / "reports"
 
 PY = sys.executable  # the interpreter running doit, so the env is never ambiguous
 
-START_DATE = datetime.strptime(config("START_DATE"), "%Y-%m-%d")
-SIZ_END_DATE = datetime.strptime(config("SIZ_END_DATE"), "%Y-%m-%d")
+def _as_date_str(value):
+    """Normalise a config date to the YYYY-MM-DD string the CLI tasks need.
+
+    `config()` is not type-stable for these keys: it returns a `datetime` when
+    the value falls through to the `settings.py` default, but a `str` when it
+    comes from an environment variable or `.env`. So neither `.strftime()` nor
+    `strptime()` is correct on its own -- each works in one configuration and
+    raises in the other, which is why this line has been fixed twice and broken
+    twice. Accepting both is the only form that survives a clean clone *and* a
+    populated `.env`.
+    """
+    return value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else str(value)
+
+
+START_DATE = _as_date_str(config("START_DATE"))
+SIZ_END_DATE = _as_date_str(config("SIZ_END_DATE"))
 N_SIMS = config("N_SIMS")
 
 PANEL_SIZ = DATA_DIR / "master_panel.csv"
