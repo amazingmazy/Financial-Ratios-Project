@@ -51,7 +51,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from settings import config  # noqa: E402
-os.environ["WRDS_USERNAME"] = config("WRDS_USERNAME")
+
+try:
+    _wrds_username = config("WRDS_USERNAME")
+except Exception:
+    _wrds_username = None
+if _wrds_username:
+    os.environ.setdefault("WRDS_USERNAME", _wrds_username)
+
 BASE_DIR = config("BASE_DIR")
 DATA_DIR = config("DATA_DIR")
 OUTPUT_DIR = config("OUTPUT_DIR")
